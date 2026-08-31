@@ -31,6 +31,10 @@ process.on('unhandledRejection', (err) => {
 
 const app = express();
 
+// Render (and other proxied hosts) terminate TLS upstream; trust the
+// forwarded proto/host so /uploads links are absolute HTTPS, not http://.
+app.set('trust proxy', 1);
+
 app.use(
   cors({
     origin: true,
