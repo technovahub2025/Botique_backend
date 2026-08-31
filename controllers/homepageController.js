@@ -46,6 +46,7 @@ const normalizeHeroImages = (raw) => {
       if (item && typeof item === 'object') {
         const isActive = item.isActive !== undefined ? item.isActive : item.enabled !== undefined ? item.enabled : true;
         return {
+          id: item.id || item._id || undefined,
           imageUrl: item.imageUrl || item.image || '',
           smallLabel: item.smallLabel || '',
           heading: item.heading || '',
