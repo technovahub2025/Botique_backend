@@ -87,7 +87,7 @@ const getHomepage = asyncHandler(async (req, res) => {
   }
   const sections = normalizeSections(homepage.sections);
   const heroSection = sections.find((s) => s.key === 'hero');
-  console.log('[Homepage GET] heroImages count:', heroSection?.data?.heroImages?.length || 0);
+  console.log('[Homepage GET] heroImages:', heroSection?.data?.heroImages?.map((s) => s.imageUrl));
   res.status(200).json({ success: true, sections });
 });
 
@@ -100,6 +100,10 @@ const updateHomepage = asyncHandler(async (req, res) => {
     throw err;
   }
 
+  const incomingHero =
+    sections.find((s) => s.key === 'hero')?.data?.heroImages?.map((s) => s.imageUrl) ?? [];
+  console.log('[Homepage PUT] incoming heroImages:', incomingHero);
+
   const normalizedSections = normalizeSections(sections);
 
   let homepage = await Homepage.findOne();
@@ -111,7 +115,10 @@ const updateHomepage = asyncHandler(async (req, res) => {
   await homepage.save();
 
   const heroSection = normalizedSections.find((s) => s.key === 'hero');
-  console.log('[Homepage PUT] heroImages saved:', heroSection?.data?.heroImages?.length || 0);
+  console.log(
+    '[Homepage PUT] saved heroImages:',
+    heroSection?.data?.heroImages?.map((s) => s.imageUrl)
+  );
 
   res.status(200).json({
     success: true,
