@@ -66,54 +66,6 @@ const api = (path, method, body, token) => new Promise((resolve, reject) => {
     ('   Hero image 1:', hero?.data?.heroImages?.[0]?.imageUrl);
     ('   Hero heading:', hero?.data?.heading);
 
-    // === COUPONS ===
-    // Create coupon
-    const now = new Date();
-    const future = new Date();
-    future.setMonth(future.getMonth() + 3);
-    const createCoupon = await api('/api/coupons', 'POST', {
-      code: 'WELCOME10',
-      description: '10% off for new customers',
-      discountType: 'percentage',
-      value: 10,
-      minOrder: 500,
-      maxDiscount: 5000,
-      startDate: now.toISOString().split('T')[0],
-      endDate: future.toISOString().split('T')[0],
-      usageLimit: 100,
-      perUserLimit: 1,
-      active: true,
-    }, token);
-    ('4. Coupon created:', createCoupon.status, createCoupon.body.success, createCoupon.body.coupon?.code);
-
-    // List coupons
-    const coupons = await api('/api/coupons?limit=50', 'GET', null, token);
-    ('5. Coupons list:', coupons.status, coupons.body.count, 'coupons');
-    ('   First:', coupons.body.coupons?.[0]?.code, coupons.body.coupons?.[0]?.discountType, coupons.body.coupons?.[0]?.value);
-
-    // Update coupon (disable)
-    const couponId = createCoupon.body.coupon._id;
-    const disableCoupon = await api('/api/coupons/' + couponId, 'PUT', { active: false }, token);
-    ('6. Coupon disabled:', disableCoupon.status, disableCoupon.body.coupon?.active);
-
-    // Validate coupon (no admin token needed for validation)
-    const validateRes = await api('/api/coupons/validate/WELCOME10', 'GET', null, token);
-    ('7. Validate WELCOME10:', validateRes.status, validateRes.body.valid);
-
-    // Delete coupon
-    const deleteCoupon = await api('/api/coupons/' + couponId, 'DELETE', null, token);
-    ('8. Coupon deleted:', deleteCoupon.status, deleteCoupon.body.success);
-
-    // === REVIEWS ===
-    // Create a test review by first creating a product and order
-    // Since we don't have a reviews endpoint to create, let's just test GET
-    const reviews = await api('/api/reviews?limit=50', 'GET', null, token);
-    ('9. Reviews list:', reviews.status, reviews.body.count, 'reviews');
-
-    // Test filter
-    const pendingReviews = await api('/api/reviews?status=pending&limit=50', 'GET', null, token);
-    ('   Pending reviews:', pendingReviews.body.count);
-
     ('\n=== CONTENT MANAGEMENT APIs WORKING ===');
     process.exit(0);
   } catch (e) {

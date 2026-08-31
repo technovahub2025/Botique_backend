@@ -1,7 +1,6 @@
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
-const Coupon = require('../models/Coupon');
 const asyncHandler = require('../middleware/asyncHandler');
 const { calculateShipping, calculateTax } = require('../utils/helpers');
 
@@ -21,7 +20,6 @@ const orderController = {
     const {
       shippingAddress,
       billingAddress,
-      couponCode,
       deliveryMethod = 'standard',
       paymentMethod = 'cod',
       notes,
@@ -77,50 +75,7 @@ const orderController = {
       });
     }
 
-    let discount = 0;
-
-    if (couponCode) {
-      const coupon = await Coupon.findOne({ code: couponCode.toUpperCase() });
-      if (!coupon) {
-        throw makeError('Invalid coupon code', 400);
-      }
-
-      if (!coupon.active) {
-        throw makeError('Coupon is not active', 400);
-      }
-
-      const now = new Date();
-      if (now < coupon.startDate || now > coupon.endDate) {
-        throw makeError('Coupon has expired or is not yet valid', 400);
-      }
-
-      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
-        throw makeError('Coupon usage limit reached', 400);
-      }
-
-      if (subtotal < coupon.minOrder) {
-        throw makeError(`Minimum order of ₹${coupon.minOrder} required for this coupon`, 400);
-      }
-
-      if (coupon.discountType === 'percentage') {
-        discount = (subtotal * coupon.value) / 100;
-      } else {
-        discount = coupon.value;
-      }
-
-      if (coupon.maxDiscount && discount > coupon.maxDiscount) {
-        discount = coupon.maxDiscount;
-      }
-
-      discount = Math.round(discount * 100) / 100;
-
-      cart.coupon = coupon._id;
-      cart.couponCode = couponCode.toUpperCase();
-      cart.couponDiscount = discount;
-
-      coupon.usedCount += 1;
-      await coupon.save();
-    }
+    const discount = 0;
 
     const shipping = deliveryMethod === 'express'
       ? EXPRESS_SHIPPING
@@ -142,8 +97,6 @@ const orderController = {
       shipping,
       tax,
       total,
-      coupon: cart.coupon || null,
-      couponCode: cart.couponCode || null,
       paymentMethod,
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
       deliveryMethod,
@@ -169,15 +122,11 @@ const orderController = {
     }
 
     cart.items = [];
-    cart.coupon = undefined;
-    cart.couponCode = undefined;
-    cart.couponDiscount = 0;
     await cart.save();
 
     const populatedOrder = await Order.findById(order._id)
       .populate('user', 'name email phone')
-      .populate('items.product')
-      .populate('coupon');
+      .populate('items.product');
 
     res.status(201).json({
       success: true,
@@ -194,7 +143,6 @@ const orderController = {
         shipping: populatedOrder.shipping,
         tax: populatedOrder.tax,
         total: populatedOrder.total,
-        couponCode: populatedOrder.couponCode,
         paymentMethod: populatedOrder.paymentMethod,
         paymentStatus: populatedOrder.paymentStatus,
         orderStatus: populatedOrder.orderStatus,
@@ -228,8 +176,7 @@ const orderController = {
   getOrder: asyncHandler(async (req, res) => {
     const order = await Order.findById(req.params.id)
       .populate('user', 'name email phone')
-      .populate('items.product')
-      .populate('coupon');
+      .populate('items.product');
 
     if (!order) {
       throw makeError('Order not found', 404);

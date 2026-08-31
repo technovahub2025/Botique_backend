@@ -46,8 +46,6 @@ const orderSchema = new mongoose.Schema(
     shipping: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
     total: { type: Number, required: true, min: 0 },
-    coupon: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
-    couponCode: { type: String },
     paymentMethod: {
       type: String,
       enum: ['cod', 'card', 'upi', 'netbanking', 'wallet'],

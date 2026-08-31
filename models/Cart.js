@@ -16,9 +16,6 @@ const cartSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     items: [cartItemSchema],
-    coupon: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
-    couponCode: { type: String },
-    couponDiscount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
@@ -34,14 +31,8 @@ cartSchema.virtual('subtotal').get(function () {
   }, 0);
 });
 
-cartSchema.virtual('discountAmount').get(function () {
-  return this.couponDiscount || 0;
-});
-
 cartSchema.virtual('total').get(function () {
-  const subtotal = this.subtotal;
-  const discount = this.discountAmount;
-  return Math.max(subtotal - discount, 0);
+  return this.subtotal;
 });
 
 cartSchema.set('toJSON', { virtuals: true });

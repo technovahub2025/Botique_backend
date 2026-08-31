@@ -5,7 +5,6 @@ const User = require('../models/User');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
 const Cart = require('../models/Cart');
-const Coupon = require('../models/Coupon');
 const { generateToken } = require('../utils/generateToken');
 
 describe('Order API', () => {
@@ -194,52 +193,6 @@ describe('Order API', () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toMatch(/stock/i);
-    });
-
-    it('should apply coupon and calculate discount', async () => {
-      const coupon = await Coupon.create({
-        code: 'TEST10',
-        description: '10% off',
-        discountType: 'percentage',
-        value: 10,
-        minOrder: 0,
-        maxDiscount: 5000,
-        startDate: new Date(Date.now() - 86400000),
-        endDate: new Date(Date.now() + 86400000),
-        usageLimit: 100,
-        active: true,
-      });
-
-      await addToCart(token, productId, 2, 'M');
-
-      const res = await request(app)
-        .post('/api/orders')
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          shippingAddress: {
-            name: 'Test User',
-            phone: '1234567890',
-            addressLine1: '123 Test Street',
-            city: 'Mumbai',
-            state: 'Maharashtra',
-            postalCode: '400001',
-            country: 'India',
-          },
-          couponCode: 'TEST10',
-        });
-
-      expect(res.status).toBe(201);
-      const order = res.body.order;
-      // Subtotal = 4000 * 2 = 8000
-      expect(order.subtotal).toBe(8000);
-      // Discount = 10% of 8000 = 800
-      expect(order.discount).toBe(800);
-      // Shipping = 0 (free, since 8000 - 800 = 7200 < 10000, so standard = 200)
-      expect(order.shipping).toBe(200);
-      // Tax = 12% of (8000 - 800 + 200) = 12% of 7400 = 888
-      expect(order.tax).toBe(888);
-      // Total = 8000 - 800 + 200 + 888 = 8288
-      expect(order.total).toBe(8288);
     });
 
     it('should offer free shipping when subtotal >= threshold', async () => {
