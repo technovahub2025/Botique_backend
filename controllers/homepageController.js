@@ -120,4 +120,4 @@ const updateHomepage = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getHomepage, updateHomepage, DEFAULT_SECTIONS };
+module.exports = { getHomepage, updateHomepage, DEFAULT_SECTIONS, normalizeSections, normalizeHeroImages };
