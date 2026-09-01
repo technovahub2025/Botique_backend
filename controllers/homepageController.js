@@ -22,9 +22,9 @@ const DEFAULT_SECTIONS = [
   { key: 'craftsmanship', enabled: true, data: { title: 'Our Craftsmanship', description: 'Handcrafted with care', imageUrl: '' } },
   { key: 'trending', enabled: true, data: { title: 'Trending Now', subtitle: 'Most popular pieces', limit: 8 } },
   { key: 'price_sections', enabled: true, data: { title: 'Find Your Investment', subtitle: 'Curated by price', cards: [
-    { title: 'UNDER ₹15K', description: 'Accessible luxury starting points.', minPrice: 0, maxPrice: 15000, link: '/shop?maxPrice=15000', order: 1, enabled: true },
-    { title: 'UNDER ₹25K', description: 'Statement pieces and heirloom silhouettes.', minPrice: 15001, maxPrice: 25000, link: '/shop?maxPrice=25000', order: 2, enabled: true },
-    { title: 'UNDER ₹40K', description: 'Bespoke and collector-grade designs.', minPrice: 25001, maxPrice: 40000, link: '/shop?maxPrice=40000', order: 3, enabled: true },
+    { title: 'UNDER ₹15K', description: 'Accessible luxury starting points.', minPrice: 0, maxPrice: 15000, link: '/shop?maxPrice=15000', imageUrl: '', order: 1, enabled: true },
+    { title: 'UNDER ₹25K', description: 'Statement pieces and heirloom silhouettes.', minPrice: 15001, maxPrice: 25000, link: '/shop?maxPrice=25000', imageUrl: '', order: 2, enabled: true },
+    { title: 'UNDER ₹40K', description: 'Bespoke and collector-grade designs.', minPrice: 25001, maxPrice: 40000, link: '/shop?maxPrice=40000', imageUrl: '', order: 3, enabled: true },
   ] } },
   { key: 'newsletter', enabled: true, data: { title: 'Join Our Newsletter', description: 'Subscribe for exclusive previews and styling tips.', buttonText: 'Subscribe' } },
 ];
