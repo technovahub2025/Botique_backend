@@ -17,7 +17,7 @@ const DEFAULT_SECTIONS = [
   { key: 'new_arrivals', enabled: true, data: { title: 'New Arrivals', subtitle: 'Freshly woven, just in', limit: 8 } },
   { key: 'product_carousel', enabled: true, data: { title: 'New Arrivals', type: 'newArrival', subtitle: 'Freshly woven, just in', limit: 8 } },
   { key: 'shop_by_category', enabled: true, data: { title: 'Shop by Category', subtitle: 'Curated by silhouette' } },
-  { key: 'featured_collection', enabled: true, data: { title: 'Featured Collection', subtitle: "Editor's selection", collectionId: '' } },
+  { key: 'featured_collection', enabled: true, data: { title: 'Featured Collection', subtitle: "Editor's selection", collectionId: '', image: '' } },
   { key: 'shop_the_look', enabled: true, data: { title: 'Shop The Look', images: [], description: 'Style inspiration' } },
   { key: 'editorial', enabled: true, data: { title: 'The Art of Handweaving', content: '', imageUrl: '', linkUrl: '/story' } },
   { key: 'craftsmanship', enabled: true, data: { title: 'Our Craftsmanship', description: 'Handcrafted with care', imageUrl: '' } },
