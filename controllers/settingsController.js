@@ -23,9 +23,6 @@ const updateSettings = asyncHandler(async (req, res) => {
   if (orders) {
     Object.assign(settings.orders, orders);
   }
-  if (inventory) {
-    Object.assign(settings.inventory, inventory);
-  }
   if (notifications) {
     Object.assign(settings.notifications, notifications);
   }
