@@ -1,5 +1,7 @@
 const express = require('express');
 const fsPromises = require('fs').promises;
+const crypto = require('crypto');
+const path = require('path');
 const upload = require('../middleware/upload');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
@@ -50,16 +52,18 @@ router.post(
         });
         return;
       } catch (driveErr) {
-        if (driveErr.code === 'DRIVE_CONFIG_ERROR' || driveErr.code === 'DRIVE_FOLDER_ERROR') {
-          console.error('Google Drive upload skipped:', driveErr.message);
-        } else {
-          console.error('Google Drive upload failed, falling back to local:', driveErr.message);
-        }
+        console.error('Google Drive upload failed:', {
+          message: driveErr.message,
+          code: driveErr.code,
+          status: driveErr.response?.status,
+          statusText: driveErr.response?.statusText,
+          responseData: driveErr.response?.data,
+        });
       }
+    } else {
+      console.log('Google Drive not configured. Using local upload.');
     }
 
-    const crypto = require('crypto');
-    const path = require('path');
     const ext = path.extname(originalname);
     const localFilename = `${crypto.randomUUID()}${ext}`;
     const localPath = path.join(__dirname, '..', 'uploads', localFilename);
@@ -94,7 +98,6 @@ router.delete(
       }
     }
 
-    const path = require('path');
     const localFile = path.join(__dirname, '..', 'uploads', fileId);
     try {
       await fsPromises.unlink(localFile);

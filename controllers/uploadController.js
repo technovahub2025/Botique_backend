@@ -12,7 +12,12 @@ const IMAGE_MIME_TYPES = {
   'application/octet-stream': 'application/octet-stream',
 };
 
-const streamFile = (res, stream, mimeType, contentLength) => {
+const streamFile = (req, res, stream, mimeType, contentLength) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
   res.setHeader('Content-Type', mimeType || 'application/octet-stream');
   if (contentLength) {
     res.setHeader('Content-Length', contentLength);
@@ -51,7 +56,7 @@ const getDriveImage = async (req, res, next) => {
     }
 
     const stream = await downloadFileStream(fileId);
-    streamFile(res, stream, mimeType);
+    streamFile(req, res, stream, mimeType);
   } catch (err) {
     if (err.code === 'DRIVE_FILE_NOT_FOUND' || err.code === 404) {
       return res.status(404).json({ success: false, message: 'File not found' });
