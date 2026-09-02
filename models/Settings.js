@@ -15,11 +15,6 @@ const settingsSchema = new mongoose.Schema(
       defaultStatus: { type: String, default: 'pending' },
       autoConfirmOrder: { type: Boolean, default: false },
     },
-    inventory: {
-      lowStockThreshold: { type: Number, default: 5 },
-      notifyLowStock: { type: Boolean, default: true },
-      allowBackorder: { type: Boolean, default: false },
-    },
     notifications: {
       newOrder: { type: Boolean, default: true },
       payment: { type: Boolean, default: true },

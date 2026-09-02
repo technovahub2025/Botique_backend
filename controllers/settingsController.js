@@ -10,7 +10,7 @@ const getSettings = asyncHandler(async (req, res) => {
 });
 
 const updateSettings = asyncHandler(async (req, res) => {
-  const { general, orders, inventory, notifications, security } = req.body;
+  const { general, orders, notifications, security } = req.body;
 
   let settings = await SettingsModel.findOne();
   if (!settings) {
