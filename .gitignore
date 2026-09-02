@@ -8,3 +8,6 @@ uploads/*
 Thumbs.db
 *boutique*507410*.json
 *service_account*.json
+# Google Cloud credentials
+utils/*.json
+*.service-account.json
