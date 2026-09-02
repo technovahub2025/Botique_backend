@@ -18,7 +18,7 @@ function getDriveClient() {
     throw err;
   }
 
-  const jwtClient = new google.auth.JWT(clientEmail, null, privateKey, SCOPES);
+  const jwtClient = new google.auth.JWT(clientEmail, privateKey, null, SCOPES);
 
   googleDrive = google.drive({ version: 'v3', auth: jwtClient });
   authClient = jwtClient;
