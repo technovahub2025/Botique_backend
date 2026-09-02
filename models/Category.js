@@ -6,6 +6,11 @@ const categorySchema = new mongoose.Schema(
     slug: { type: String, unique: true, lowercase: true, trim: true },
     description: { type: String, trim: true },
     image: { type: String, default: '' },
+    imageMetadata: {
+      driveFileId: { type: String },
+      originalName: { type: String },
+      mimeType: { type: String },
+    },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     order: { type: Number, default: 0 },
   },

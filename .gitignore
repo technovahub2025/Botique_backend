@@ -6,3 +6,5 @@ uploads/*
 *.log
 .DS_Store
 Thumbs.db
+*boutique*507410*.json
+*service_account*.json

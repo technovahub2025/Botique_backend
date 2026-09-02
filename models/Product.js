@@ -19,6 +19,12 @@ const productSchema = new mongoose.Schema(
     salePrice: { type: Number, min: 0, default: null },
     costPrice: { type: Number, min: 0, default: null },
     images: [{ type: String, required: true }],
+    imageMetadata: [{
+      url: { type: String },
+      driveFileId: { type: String },
+      originalName: { type: String },
+      mimeType: { type: String },
+    }],
     thumbnail: { type: String },
     sizes: [{ type: String, trim: true }],
     colors: [{ type: String, trim: true }],
