@@ -1,4 +1,5 @@
 const { google } = require('googleapis');
+const { Readable } = require('stream');
 
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
@@ -94,7 +95,7 @@ async function uploadBufferToDrive(buffer, originalName, mimeType) {
     requestBody: metadata,
     media: {
       mimeType,
-      body: buffer,
+      body: Readable.from([buffer]),
     },
     fields: 'id,name,mimeType,size',
     supportsAllDrives: true,

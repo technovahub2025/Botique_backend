@@ -56,7 +56,7 @@ router.post(
       throw new Error('Failed to upload image to Google Drive. Please check server configuration and try again.');
     }
 
-    const proxyUrl = `${base}/api/uploads/drive/${driveResult.driveFileId}`;
+    const proxyUrl = `${base}/api/upload/drive/${driveResult.driveFileId}`;
 
     res.status(201).json({
       success: true,
