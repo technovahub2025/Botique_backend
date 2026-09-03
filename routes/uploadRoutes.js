@@ -5,7 +5,7 @@ const upload = require('../middleware/upload');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
 const asyncHandler = require('../middleware/asyncHandler');
-const { uploadBufferToDrive, deleteDriveFile, getDriveClient } = require('../utils/googleDrive');
+const { uploadBufferToDrive, deleteDriveFile, loadGoogleDriveCredentials } = require('../utils/googleDrive');
 const { getDriveImage } = require('../controllers/uploadController');
 
 const router = express.Router();
@@ -15,20 +15,22 @@ router.get('/drive/:fileId', getDriveImage);
 router.use(protect, admin);
 
 const isDriveConfigured = () => {
-  return !!(
-    process.env.GOOGLE_CLIENT_EMAIL &&
-    process.env.GOOGLE_PRIVATE_KEY &&
+  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
+  return Boolean(
+    clientEmail &&
+    privateKey &&
     process.env.GOOGLE_DRIVE_FOLDER_ID
   );
 };
 
 const logDriveEnvCheck = () => {
+  const { clientEmail } = loadGoogleDriveCredentials();
   console.error('[Drive env check]', {
     hasProjectId: !!process.env.GOOGLE_PROJECT_ID,
     hasClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
     hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
     hasFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
-    clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
+    clientEmail: clientEmail,
     folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
   });
 };

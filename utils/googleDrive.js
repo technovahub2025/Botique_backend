@@ -56,8 +56,14 @@ function normalizePrivateKey(value) {
     privateKey.includes('-----BEGIN') &&
     privateKey.includes('-----END');
 
+  if (hasPemBoundary) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
+
   // Try base64 decoding if it doesn't already look like PEM
   if (!hasPemBoundary) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+
     const base64Candidate = privateKey.replace(/\s+/g, '');
 
     if (/^[A-Za-z0-9+/=]+$/.test(base64Candidate)) {
@@ -165,6 +171,26 @@ function getDriveClient() {
     err.code = 'DRIVE_CONFIG_ERROR';
 
     throw err;
+  }
+
+  const crypto = require('crypto');
+
+  try {
+    const keyObject = crypto.createPrivateKey(privateKey);
+    console.error('[Drive key format]', {
+      type: keyObject.type,
+      asymmetricKeyType: keyObject.asymmetricKeyType,
+      keyBits: keyObject.keyLength || 'n/a',
+    });
+  } catch (keyErr) {
+    console.error('[Drive key parse error]', {
+      message: keyErr.message,
+      code: keyErr.code,
+      hasPrivateKey: privateKey.length > 0,
+      startsWithPem: privateKey.trim().startsWith('-----BEGIN'),
+      endsWithPem: privateKey.trim().endsWith('-----END PRIVATE KEY-----'),
+      keyLength: privateKey.length,
+    });
   }
 
   let jwtClient;
