@@ -12,9 +12,11 @@ function getDriveClient() {
   let privateKey = process.env.GOOGLE_PRIVATE_KEY;
 
   if (privateKey) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-    if (!privateKey.includes('-----BEGIN') && !privateKey.startsWith('-----BEGIN')) {
+    if (!privateKey.includes('-----BEGIN')) {
+      privateKey = privateKey.replace(/\\n/g, '\n');
       privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----\n`;
+    } else {
+      privateKey = privateKey.replace(/\\n/g, '\n');
     }
   }
 
@@ -64,12 +66,35 @@ async function ensureDriveAccess() {
     if (err.code === 404) {
       const folderErr = new Error('Google Drive folder not found. Verify the folder ID and sharing permissions.');
       folderErr.code = 'DRIVE_FOLDER_ERROR';
+      folderErr.originalError = {
+        code: err.code,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        message: err.message,
+      };
       throw folderErr;
     }
     if (err.code === 403) {
       const permErr = new Error('Google Drive access denied. Ensure the service account has access to the folder.');
       permErr.code = 'DRIVE_PERM_ERROR';
+      permErr.originalError = {
+        code: err.code,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        message: err.message,
+      };
       throw permErr;
+    }
+    if (!err.originalError) {
+      err.originalError = {
+        code: err.code,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        message: err.message,
+      };
     }
     throw err;
   }
