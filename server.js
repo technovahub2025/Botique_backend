@@ -3,7 +3,7 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const app = require('./app');
 const ensureAdminExists = require('./utils/seedAdmin');
-const { getDriveClient } = require('./utils/googleDrive');
+const { getDriveClient, ensureDriveAccess } = require('./utils/googleDrive');
 
 const startServer = async () => {
   const dbConnected = await connectDB();
@@ -21,12 +21,19 @@ const startServer = async () => {
   ) {
     try {
       getDriveClient();
-      console.log('Google Drive storage configured.');
+      console.log('Google Drive storage configured: true');
+      console.log('Google Drive folder:', process.env.GOOGLE_DRIVE_FOLDER_ID);
+      try {
+        const folderInfo = await ensureDriveAccess();
+        console.log('Google Drive folder verified:', folderInfo.name);
+      } catch (accessErr) {
+        console.warn('Google Drive folder access check warning:', accessErr.message);
+      }
     } catch (err) {
       console.error('Google Drive storage configured with errors:', err.message);
     }
   } else {
-    console.log('Google Drive storage not configured. Falling back to local uploads.');
+    console.log('Google Drive storage not configured. Uploads will fail.');
   }
 
   const PORT = process.env.PORT || 8000;

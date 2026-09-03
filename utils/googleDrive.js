@@ -9,8 +9,14 @@ function getDriveClient() {
   if (googleDrive) return googleDrive;
 
   const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  const projectId = process.env.GOOGLE_PROJECT_ID;
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+
+  if (privateKey) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+    if (!privateKey.includes('-----BEGIN') && !privateKey.startsWith('-----BEGIN')) {
+      privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----\n`;
+    }
+  }
 
   if (!clientEmail || !privateKey) {
     const err = new Error('Google Drive credentials not configured. Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY.');
@@ -41,30 +47,29 @@ async function ensureDriveAccess() {
   }
 
   try {
-    const metadata = {
-      name: 'placeholder-access-check',
-      mimeType: 'text/plain',
-    };
-    const buffer = Buffer.from('check', 'utf8');
-
-    const res = await drive.files.create({
-      requestBody: {
-        ...metadata,
-        parents: [folderId],
-      },
-      media: {
-        mimeType: 'text/plain',
-        body: buffer,
-      },
+    const response = await drive.files.get({
+      fileId: folderId,
+      fields: 'id,name,mimeType',
+      supportsAllDrives: true,
     });
 
-    await drive.files.delete({ fileId: res.data.id });
-    return true;
+    if (response.data.mimeType === 'application/vnd.google-apps.folder') {
+      return { folderId: response.data.id, name: response.data.name };
+    }
+
+    const err = new Error(`ID ${folderId} does not point to a Drive folder.`);
+    err.code = 'DRIVE_FOLDER_ERROR';
+    throw err;
   } catch (err) {
-    if (err.code === 404 || err.message?.includes('folder')) {
-      const folderErr = new Error('Google Drive folder not accessible. Check folder ID and sharing permissions.');
+    if (err.code === 404) {
+      const folderErr = new Error('Google Drive folder not found. Verify the folder ID and sharing permissions.');
       folderErr.code = 'DRIVE_FOLDER_ERROR';
       throw folderErr;
+    }
+    if (err.code === 403) {
+      const permErr = new Error('Google Drive access denied. Ensure the service account has access to the folder.');
+      permErr.code = 'DRIVE_PERM_ERROR';
+      throw permErr;
     }
     throw err;
   }
@@ -92,6 +97,7 @@ async function uploadBufferToDrive(buffer, originalName, mimeType) {
       body: buffer,
     },
     fields: 'id,name,mimeType,size',
+    supportsAllDrives: true,
   });
 
   return {
@@ -109,6 +115,7 @@ async function getFileMetadata(driveFileId) {
     const response = await drive.files.get({
       fileId: driveFileId,
       fields: 'id,name,mimeType,size,thumbnails',
+      supportsAllDrives: true,
     });
     return response.data;
   } catch (err) {
@@ -126,7 +133,7 @@ async function downloadFileStream(driveFileId) {
 
   try {
     const response = await drive.files.get(
-      { fileId: driveFileId, alt: 'media' },
+      { fileId: driveFileId, alt: 'media', supportsAllDrives: true },
       { responseType: 'stream' }
     );
     return response.data;
@@ -144,7 +151,7 @@ async function deleteDriveFile(driveFileId) {
   const drive = getDriveClient();
 
   try {
-    await drive.files.delete({ fileId: driveFileId });
+    await drive.files.delete({ fileId: driveFileId, supportsAllDrives: true });
     return true;
   } catch (err) {
     if (err.code === 404) {
