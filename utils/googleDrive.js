@@ -7,6 +7,29 @@ let authClient = null;
 let googleDrive = null;
 
 /**
+ * Normalize a Google Drive folder ID by trimming whitespace
+ * and removing accidental surrounding quotes.
+ */
+function normalizeFolderId(value) {
+  if (!value || typeof value !== 'string') {
+    return value;
+  }
+
+  let normalized = value.trim();
+
+  // Remove surrounding single/double quotes
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'")
+    )
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+
+  return normalized.trim();
+}
+
+/**
  * Normalize environment variable values.
  * Handles:
  * - surrounding quotes
@@ -266,7 +289,7 @@ function getDriveClient() {
 async function ensureDriveAccess() {
   const drive = getDriveClient();
 
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const folderId = normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID);
 
   if (!folderId) {
     const err = new Error(
@@ -278,10 +301,19 @@ async function ensureDriveAccess() {
     throw err;
   }
 
+  const { clientEmail } = loadGoogleDriveCredentials();
+
+  console.error('[Drive folder access check]', {
+    folderId: folderId,
+    serviceAccount: clientEmail,
+    oauthScope: SCOPES,
+    folderIdLength: folderId.length,
+  });
+
   try {
     const response = await drive.files.get({
       fileId: folderId,
-      fields: 'id,name,mimeType',
+      fields: 'id,name,mimeType,parents,driveId,capabilities',
       supportsAllDrives: true,
     });
 
@@ -317,6 +349,14 @@ async function ensureDriveAccess() {
         data: err.response?.data,
         message: err.message,
       };
+
+      console.error('[Drive folder access FAILED]', {
+        folderId: folderId,
+        serviceAccount: clientEmail,
+        googleApiCode: err.code,
+        googleApiStatus: err.response?.status,
+        googleApiMessage: err.message,
+      });
 
       throw folderErr;
     }
@@ -374,7 +414,7 @@ async function uploadBufferToDrive(
   const drive = getDriveClient();
 
   const folderId =
-    process.env.GOOGLE_DRIVE_FOLDER_ID;
+    normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID);
 
   if (!folderId) {
     const err = new Error(
@@ -636,5 +676,6 @@ module.exports = {
   setFilePermissions,
   normalizeSecretValue,
   normalizePrivateKey,
+  normalizeFolderId,
   loadGoogleDriveCredentials,
 };
