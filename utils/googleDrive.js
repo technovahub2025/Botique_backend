@@ -37,10 +37,24 @@ function normalizeSecretValue(value) {
 }
 
 /**
+ * Re-format a PEM key body into proper 64-char line breaks.
+ * This fixes keys from environment variables that have had
+ * newlines stripped (common on Render / Kubernetes / Docker).
+ */
+function formatPemKey(keyBody, pemType) {
+  const cleaned = keyBody.replace(/\s+/g, '');
+  const lines = [];
+  for (let i = 0; i < cleaned.length; i += 64) {
+    lines.push(cleaned.slice(i, i + 64));
+  }
+  return `-----BEGIN ${pemType}-----\n${lines.join('\n')}\n-----END ${pemType}-----\n`;
+}
+
+/**
  * Normalize Google service-account private key.
  *
  * Supports:
- * - Normal PEM private keys
+ * - Normal PEM private keys (with or without line breaks)
  * - Environment variables containing escaped \n
  * - Base64 encoded PEM
  * - Raw key body without PEM boundaries
@@ -58,6 +72,22 @@ function normalizePrivateKey(value) {
 
   if (hasPemBoundary) {
     privateKey = privateKey.replace(/\\n/g, '\n');
+
+    const beginIdx = privateKey.indexOf('-----BEGIN');
+    const endIdx = privateKey.indexOf('-----END');
+    if (beginIdx !== -1 && endIdx !== -1 && endIdx > beginIdx) {
+      const beginMatch = privateKey.substring(beginIdx).match(/-----BEGIN ([A-Z ]+)-----/);
+      const beginTag = beginMatch ? beginMatch[0] : '-----BEGIN PRIVATE KEY-----';
+      const pemType = beginMatch ? beginMatch[1] : 'PRIVATE KEY';
+
+      const endLineMatch = privateKey.substring(endIdx).match(/-----END ([A-Z ]+)-----/);
+      const endTag = endLineMatch ? endLineMatch[0] : '-----END PRIVATE KEY-----';
+
+      const beginTagEnd = beginIdx + beginTag.length;
+      const body = privateKey.substring(beginTagEnd, endIdx).trim();
+
+      privateKey = formatPemKey(body, pemType);
+    }
   }
 
   // Try base64 decoding if it doesn't already look like PEM
@@ -184,13 +214,22 @@ function getDriveClient() {
     });
   } catch (keyErr) {
     console.error('[Drive key parse error]', {
-      message: keyErr.message,
+      message: 'GOOGLE_PRIVATE_KEY could not be parsed as a valid service-account private key',
+      originalError: keyErr.message,
       code: keyErr.code,
-      hasPrivateKey: privateKey.length > 0,
-      startsWithPem: privateKey.trim().startsWith('-----BEGIN'),
-      endsWithPem: privateKey.trim().endsWith('-----END PRIVATE KEY-----'),
+      credentialConfigured: true,
+      clientEmailConfigured: !!process.env.GOOGLE_CLIENT_EMAIL,
+      privateKeyConfigured: !!process.env.GOOGLE_PRIVATE_KEY,
+      startsWithBeginPrivateKey: privateKey.trim().startsWith('-----BEGIN'),
+      endsWithEndPrivateKey: privateKey.trim().endsWith('-----END PRIVATE KEY-----'),
       keyLength: privateKey.length,
+      folderIdConfigured: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
     });
+    throw new Error(
+      'GOOGLE_PRIVATE_KEY could not be parsed as a valid service-account private key. ' +
+      'The key must be a valid PEM-encoded RSA private key with proper 64-character line breaks. ' +
+      'Ensure the GOOGLE_PRIVATE_KEY environment variable preserves newlines (use literal newlines, not escaped \\n sequences, if your platform strips them).'
+    );
   }
 
   let jwtClient;
