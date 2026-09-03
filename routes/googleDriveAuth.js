@@ -153,41 +153,50 @@ router.get(
       resetOAuthCache();
 
       let folderInfo = null;
+      let folderErrMessage = null;
       try {
         folderInfo = await ensureDriveAccess();
       } catch (folderErr) {
+        folderErrMessage = folderErr.message;
         console.error('[Drive callback folder check error]', {
           message: folderErr.message,
           code: folderErr.code,
           status: folderErr.originalError?.status,
         });
+      }
 
-        return res.status(500).send(`
+      const frontendAdminUrl = process.env.FRONTEND_ADMIN_URL;
+      if (folderInfo && frontendAdminUrl) {
+        return res.redirect(302, frontendAdminUrl);
+      }
+
+      if (folderInfo) {
+        return res.send(`
           <!DOCTYPE html>
           <html>
-            <head><title>Google Drive Authorization</title></head>
+            <head>
+              <title>Google Drive Authorization Successful</title>
+              <meta http-equiv="refresh" content="3;url=/test_boutique/admin">
+            </head>
             <body style="font-family: sans-serif; max-width: 500px; margin: 50px auto; padding: 20px;">
               <h1>Authorization Successful</h1>
-              <p>Google Drive tokens were saved successfully, but folder access verification failed:</p>
-              <p style="color: #dc2626;">${folderErr.message}</p>
-              <p>Verify that <strong>GOOGLE_DRIVE_FOLDER_ID</strong> is set correctly and the authorized account has access.</p>
-              <p><a href="/">Return to admin panel</a></p>
+              <p>Google Drive is now connected.</p>
+              <p>Redirecting to admin dashboard...</p>
             </body>
           </html>
         `);
       }
 
-      res.send(`
+      return res.status(500).send(`
         <!DOCTYPE html>
         <html>
-          <head><title>Google Drive Authorization Successful</title></head>
+          <head><title>Google Drive Authorization</title></head>
           <body style="font-family: sans-serif; max-width: 500px; margin: 50px auto; padding: 20px;">
             <h1>Authorization Successful</h1>
-            <p>Google Drive is now connected and ready for image uploads.</p>
-            <p><strong>Connected folder:</strong> ${folderInfo ? folderInfo.name : normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID)}</p>
-            <p><strong>Folder ID:</strong> ${normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID)}</p>
-            <p>The refresh token has been securely persisted. Image uploads will use this Google account.</p>
-            <p><a href="/">Return to admin panel</a></p>
+            <p>Google Drive tokens were saved, but folder access verification failed:</p>
+            <p style="color: #dc2626;">${folderErrMessage}</p>
+            <p>Verify that <strong>GOOGLE_DRIVE_FOLDER_ID</strong> is set correctly and the authorized account has access.</p>
+            <p><a href="/api/google-drive/auth">Try again</a></p>
           </body>
         </html>
       `);
