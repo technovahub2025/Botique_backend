@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
 
-const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 let authClient = null;
 let googleDrive = null;
