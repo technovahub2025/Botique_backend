@@ -11,24 +11,52 @@ const {
   saveRefreshToken,
   resetOAuthCache,
   ensureDriveAccess,
+  getDriveUserInfo,
   getStoredRefreshToken,
-  normalizeFolderId,
-  getDriveClient,
 } = require('../utils/googleDrive');
 
 const router = express.Router();
 
-router.get('/status', (req, res) => {
+router.get('/status', asyncHandler(async (req, res) => {
   const configured = isOAuthConfigured();
   const authorized = isDriveAuthorized();
 
-  res.json({
+  const result = {
     success: true,
     configured,
-    authorized,
+    connected: false,
+    email: null,
+    folderAccessible: false,
     folderId: configured ? process.env.GOOGLE_DRIVE_FOLDER_ID : undefined,
-  });
-});
+  };
+
+  if (!configured) {
+    return res.status(200).json(result);
+  }
+
+  if (!authorized) {
+    return res.status(200).json(result);
+  }
+
+  try {
+    const userInfo = await getDriveUserInfo();
+    result.connected = true;
+    result.email = userInfo?.emailAddress || null;
+
+    try {
+      await ensureDriveAccess();
+      result.folderAccessible = true;
+    } catch (folderErr) {
+      result.folderAccessible = false;
+    }
+  } catch (authErr) {
+    result.connected = false;
+    result.email = null;
+    result.folderAccessible = false;
+  }
+
+  res.status(200).json(result);
+}));
 
 router.get(
   '/auth',

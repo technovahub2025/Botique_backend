@@ -495,6 +495,35 @@ async function setFilePermissions(driveFileId) {
   }
 }
 
+async function getDriveUserInfo() {
+  const drive = getDriveClient();
+
+  try {
+    const response = await drive.about.get({
+      fields: 'user',
+      supportsAllDrives: true,
+    });
+
+    return response.data.user;
+  } catch (err) {
+    if (err.code === 401 || err.code === 403) {
+      const authErr = new Error(
+        'Google Drive authentication failed. The refresh token may be invalid.'
+      );
+      authErr.code = 'DRIVE_AUTH_ERROR';
+      authErr.originalError = {
+        code: err.code,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        message: err.message,
+      };
+      throw authErr;
+    }
+
+    throw err;
+  }
+}
+
 module.exports = {
   isOAuthConfigured,
   isDriveAuthorized,
@@ -508,6 +537,7 @@ module.exports = {
   getStoredRefreshToken,
   resetOAuthCache,
   ensureDriveAccess,
+  getDriveUserInfo,
   uploadBufferToDrive,
   getFileMetadata,
   downloadFileStream,
