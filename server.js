@@ -3,7 +3,7 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const app = require('./app');
 const ensureAdminExists = require('./utils/seedAdmin');
-const { getDriveClient, ensureDriveAccess } = require('./utils/googleDrive');
+const { getDriveClient, ensureDriveAccess, loadGoogleDriveCredentials } = require('./utils/googleDrive');
 
 const startServer = async () => {
   const dbConnected = await connectDB();
@@ -19,32 +19,18 @@ const startServer = async () => {
     process.env.GOOGLE_PRIVATE_KEY &&
     process.env.GOOGLE_DRIVE_FOLDER_ID
   ) {
-    console.log('Google Drive storage configured: true');
-    console.log('Google Drive folder:', process.env.GOOGLE_DRIVE_FOLDER_ID);
-    console.log('Google Drive service account:', process.env.GOOGLE_CLIENT_EMAIL);
     try {
-      const folderInfo = await ensureDriveAccess();
-      console.log('Google Drive folder verified:', folderInfo.name);
-    } catch (accessErr) {
-      console.error('Google Drive folder access check FAILED:', accessErr.message);
-      console.error('[Drive access diagnostic]', {
-        errorName: accessErr.name,
-        errorCode: accessErr.code,
-        errorMessage: accessErr.message,
-        folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
-        serviceAccount: process.env.GOOGLE_CLIENT_EMAIL,
-        hasProjectId: !!process.env.GOOGLE_PROJECT_ID,
-        originalError: accessErr.originalError
-          ? {
-              code: accessErr.originalError.code,
-              status: accessErr.originalError.status,
-              statusText: accessErr.originalError.statusText,
-              data: JSON.stringify(accessErr.originalError.data, null, 2),
-              message: accessErr.originalError.message,
-            }
-          : 'none',
-      });
-      console.error('Check: service account email has been granted access to this folder.');
+      getDriveClient();
+      console.log('Google Drive storage configured: true');
+      console.log('Google Drive folder:', process.env.GOOGLE_DRIVE_FOLDER_ID);
+      try {
+        const folderInfo = await ensureDriveAccess();
+        console.log('Google Drive folder verified:', folderInfo.name);
+      } catch (accessErr) {
+        console.warn('Google Drive folder access check warning:', accessErr.message);
+      }
+    } catch (err) {
+      console.error('Google Drive storage configured with errors:', err.message);
     }
   } else {
     console.log('Google Drive storage not configured. Uploads will fail.');
