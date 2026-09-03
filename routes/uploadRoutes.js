@@ -5,7 +5,11 @@ const upload = require('../middleware/upload');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
 const asyncHandler = require('../middleware/asyncHandler');
-const { uploadBufferToDrive, deleteDriveFile } = require('../utils/googleDrive');
+const {
+  uploadBufferToDrive,
+  deleteDriveFile,
+  loadGoogleDriveCredentials,
+} = require('../utils/googleDrive');
 const { getDriveImage } = require('../controllers/uploadController');
 
 const router = express.Router();
@@ -15,9 +19,11 @@ router.get('/drive/:fileId', getDriveImage);
 router.use(protect, admin);
 
 const isDriveConfigured = () => {
+  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
+
   return !!(
-    process.env.GOOGLE_CLIENT_EMAIL &&
-    process.env.GOOGLE_PRIVATE_KEY &&
+    clientEmail &&
+    privateKey &&
     process.env.GOOGLE_DRIVE_FOLDER_ID
   );
 };
@@ -53,7 +59,13 @@ router.post(
         statusText: driveErr.response?.statusText,
         responseData: JSON.stringify(driveErr.response?.data),
       });
-      throw new Error('Failed to upload image to Google Drive. Please check server configuration and try again.');
+      const error = new Error(
+        driveErr.code === 'DRIVE_CONFIG_ERROR' || driveErr.code === 'DRIVE_AUTH_ERROR'
+          ? driveErr.message
+          : 'Failed to upload image to Google Drive. Please check server configuration and try again.'
+      );
+      error.statusCode = 503;
+      throw error;
     }
 
     const proxyUrl = `${base}/api/upload/drive/${driveResult.driveFileId}`;

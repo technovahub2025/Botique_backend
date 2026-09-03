@@ -3,7 +3,7 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const app = require('./app');
 const ensureAdminExists = require('./utils/seedAdmin');
-const { getDriveClient, ensureDriveAccess } = require('./utils/googleDrive');
+const { getDriveClient, ensureDriveAccess, loadGoogleDriveCredentials } = require('./utils/googleDrive');
 
 const startServer = async () => {
   const dbConnected = await connectDB();
@@ -14,11 +14,8 @@ const startServer = async () => {
 
   await ensureAdminExists();
 
-  if (
-    process.env.GOOGLE_CLIENT_EMAIL &&
-    process.env.GOOGLE_PRIVATE_KEY &&
-    process.env.GOOGLE_DRIVE_FOLDER_ID
-  ) {
+  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
+  if (clientEmail && privateKey && process.env.GOOGLE_DRIVE_FOLDER_ID) {
     try {
       getDriveClient();
       console.log('Google Drive storage configured: true');
