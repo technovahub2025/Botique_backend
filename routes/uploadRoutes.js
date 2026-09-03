@@ -72,6 +72,9 @@ router.post(
 
     res.status(201).json({
       success: true,
+      fileId: driveResult.driveFileId,
+      fileName: driveResult.name,
+      imageUrl: proxyUrl,
       url: proxyUrl,
       filename: originalname,
       driveFileId: driveResult.driveFileId,
