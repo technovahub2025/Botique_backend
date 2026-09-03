@@ -14,8 +14,11 @@ const startServer = async () => {
 
   await ensureAdminExists();
 
-  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
-  if (clientEmail && privateKey && process.env.GOOGLE_DRIVE_FOLDER_ID) {
+  if (
+    process.env.GOOGLE_CLIENT_EMAIL &&
+    process.env.GOOGLE_PRIVATE_KEY &&
+    process.env.GOOGLE_DRIVE_FOLDER_ID
+  ) {
     try {
       getDriveClient();
       console.log('Google Drive storage configured: true');

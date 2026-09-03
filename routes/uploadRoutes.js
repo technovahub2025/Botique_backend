@@ -5,11 +5,7 @@ const upload = require('../middleware/upload');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
 const asyncHandler = require('../middleware/asyncHandler');
-const {
-  uploadBufferToDrive,
-  deleteDriveFile,
-  loadGoogleDriveCredentials,
-} = require('../utils/googleDrive');
+const { uploadBufferToDrive, deleteDriveFile } = require('../utils/googleDrive');
 const { getDriveImage } = require('../controllers/uploadController');
 
 const router = express.Router();
@@ -28,6 +24,40 @@ const isDriveConfigured = () => {
   );
 };
 
+const logDriveEnvCheck = () => {
+  console.error('[Drive env check]', {
+    hasProjectId: !!process.env.GOOGLE_PROJECT_ID,
+    hasClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
+    hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+    hasFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
+    clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
+    folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
+  });
+};
+
+const logDriveError = (err) => {
+  console.error('[Drive upload diagnostic]', {
+    errorName: err.name,
+    errorMessage: err.message,
+    errorCode: err.code,
+    status: err.status,
+    responseStatus: err.response?.status,
+    responseStatusText: err.response?.statusText,
+    responseData: JSON.stringify(err.response?.data, null, 2),
+    errorKeys: Object.keys(err).filter(k => k !== 'response').join(', '),
+    responseKeys: err.response ? Object.keys(err.response).join(', ') : 'none',
+    originalError: err.originalError
+      ? {
+          code: err.originalError.code,
+          status: err.originalError.status,
+          statusText: err.originalError.statusText,
+          data: JSON.stringify(err.originalError.data),
+          message: err.originalError.message,
+        }
+      : 'none',
+  });
+};
+
 router.post(
   '/',
   upload.single('image'),
@@ -42,6 +72,7 @@ router.post(
     const base = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
 
     if (!isDriveConfigured()) {
+      logDriveEnvCheck();
       console.error('Google Drive not configured. Cannot upload images.');
       const error = new Error('Google Drive storage is not configured on the server.');
       error.statusCode = 503;
@@ -59,13 +90,7 @@ router.post(
         statusText: driveErr.response?.statusText,
         responseData: JSON.stringify(driveErr.response?.data),
       });
-      const error = new Error(
-        driveErr.code === 'DRIVE_CONFIG_ERROR' || driveErr.code === 'DRIVE_AUTH_ERROR'
-          ? driveErr.message
-          : 'Failed to upload image to Google Drive. Please check server configuration and try again.'
-      );
-      error.statusCode = 503;
-      throw error;
+      throw new Error('Failed to upload image to Google Drive. Please check server configuration and try again.');
     }
 
     const proxyUrl = `${base}/api/upload/drive/${driveResult.driveFileId}`;
