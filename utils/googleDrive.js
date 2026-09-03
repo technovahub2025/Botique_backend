@@ -6,18 +6,78 @@ const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 let authClient = null;
 let googleDrive = null;
 
+function normalizeSecretValue(value) {
+  if (!value || typeof value !== 'string') return value;
+
+  let normalized = value.trim();
+
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+
+  normalized = normalized.replace(/\\n/g, '\n').replace(/\r/g, '');
+
+  return normalized;
+}
+
+function normalizePrivateKey(value) {
+  let privateKey = normalizeSecretValue(value);
+
+  if (!privateKey) return privateKey;
+
+  const hasPemBoundary = privateKey.includes('-----BEGIN') && privateKey.includes('-----END');
+
+  if (!hasPemBoundary) {
+    const base64Candidate = privateKey.replace(/\s+/g, '');
+
+    if (/^[A-Za-z0-9+/=]+$/.test(base64Candidate)) {
+      try {
+        const decoded = Buffer.from(base64Candidate, 'base64').toString('utf8').trim();
+        if (decoded.includes('-----BEGIN') && decoded.includes('-----END')) {
+          privateKey = decoded.replace(/\r/g, '');
+        }
+      } catch (decodeErr) {
+        // Fall back to the original value below.
+      }
+    }
+  }
+
+  if (!privateKey.includes('-----BEGIN')) {
+    privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----\n`;
+  }
+
+  return privateKey;
+}
+
+function loadGoogleDriveCredentials() {
+  const serviceAccountJson = normalizeSecretValue(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  if (serviceAccountJson) {
+    try {
+      const parsed = JSON.parse(serviceAccountJson);
+      const clientEmail = parsed.client_email || parsed.clientEmail;
+      const privateKey = normalizePrivateKey(parsed.private_key || parsed.privateKey);
+
+      if (clientEmail && privateKey) {
+        return { clientEmail, privateKey };
+      }
+    } catch (err) {
+      // Ignore JSON parse errors and fall through to env-based credentials.
+    }
+  }
+
+  const clientEmail = normalizeSecretValue(process.env.GOOGLE_CLIENT_EMAIL);
+  const privateKey = normalizePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
+
+  return { clientEmail, privateKey };
+}
+
 function getDriveClient() {
   if (googleDrive) return googleDrive;
 
-  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
-
-  if (privateKey) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-    if (!privateKey.includes('-----BEGIN') && !privateKey.startsWith('-----BEGIN')) {
-      privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----\n`;
-    }
-  }
+  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
 
   if (!clientEmail || !privateKey) {
     const err = new Error('Google Drive credentials not configured. Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY.');
@@ -25,11 +85,19 @@ function getDriveClient() {
     throw err;
   }
 
-  const jwtClient = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: SCOPES,
-  });
+  let jwtClient;
+  try {
+    jwtClient = new google.auth.JWT({
+      email: clientEmail,
+      key: privateKey,
+      scopes: SCOPES,
+    });
+  } catch (err) {
+    err.code = 'DRIVE_AUTH_ERROR';
+    err.message =
+      'Google Drive authentication failed. Check that GOOGLE_PRIVATE_KEY is a valid unencrypted service-account private key with preserved newlines.';
+    throw err;
+  }
 
   googleDrive = google.drive({ version: 'v3', auth: jwtClient });
   authClient = jwtClient;
@@ -187,4 +255,6 @@ module.exports = {
   downloadFileStream,
   deleteDriveFile,
   setFilePermissions,
+  normalizePrivateKey,
+  loadGoogleDriveCredentials,
 };
