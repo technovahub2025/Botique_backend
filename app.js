@@ -20,6 +20,7 @@ const statsRoutes = require('./routes/statsRoutes');
 const userRoutes = require('./routes/userRoutes');
 const homepageRoutes = require('./routes/homepageRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const googleDriveAuthRoutes = require('./routes/googleDriveAuth');
 const settingsRoutes = require('./routes/settingsRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
@@ -78,6 +79,7 @@ app.use('/api', statsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/homepage', homepageRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/google-drive', googleDriveAuthRoutes);
 app.use('/api/settings', settingsRoutes);
 
 app.use(notFound);

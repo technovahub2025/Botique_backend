@@ -3,7 +3,12 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const app = require('./app');
 const ensureAdminExists = require('./utils/seedAdmin');
-const { getDriveClient, ensureDriveAccess, loadGoogleDriveCredentials } = require('./utils/googleDrive');
+const {
+  isOAuthConfigured,
+  isDriveAuthorized,
+  ensureDriveAccess,
+  normalizeFolderId,
+} = require('./utils/googleDrive');
 
 const startServer = async () => {
   const dbConnected = await connectDB();
@@ -14,46 +19,41 @@ const startServer = async () => {
 
   await ensureAdminExists();
 
-  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
+  const oauthConfigured = isOAuthConfigured();
 
-  if (clientEmail && privateKey && process.env.GOOGLE_DRIVE_FOLDER_ID) {
-    console.log('Google Drive storage configured: true');
-    console.log('Google Drive folder:', process.env.GOOGLE_DRIVE_FOLDER_ID);
-    console.log('Google Drive service account:', clientEmail);
-    try {
-      const folderInfo = await ensureDriveAccess();
-      console.log('Google Drive folder verified:', folderInfo.name);
-    } catch (accessErr) {
-      console.error('Google Drive folder access check FAILED:', accessErr.message);
-      console.error('[Drive access diagnostic]', {
-        errorName: accessErr.name,
-        errorCode: accessErr.code,
-        errorMessage: accessErr.message,
-        folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
-        serviceAccount: clientEmail,
-        hasProjectId: !!process.env.GOOGLE_PROJECT_ID,
-        originalError: accessErr.originalError
-          ? {
-              code: accessErr.originalError.code,
-              status: accessErr.originalError.status,
-              statusText: accessErr.originalError.statusText,
-              data: JSON.stringify(accessErr.originalError.data, null, 2),
-              message: accessErr.originalError.message,
-            }
-          : 'none',
-      });
-      console.error('Check: service account email has been granted access to this folder.');
-    }
+  if (!oauthConfigured) {
+    console.log('Google Drive OAuth storage: not configured');
+    console.log('Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_DRIVE_FOLDER_ID to enable.');
   } else {
-    console.log('Google Drive storage not configured. Uploads will fail.');
-    console.error('[Drive env check]', {
-      hasProjectId: !!process.env.GOOGLE_PROJECT_ID,
-      hasClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
-      hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
-      hasFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
-      clientEmail: clientEmail,
-      folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
-    });
+    console.log('Google Drive OAuth configured: true');
+    console.log('Google Drive folder ID:', normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID));
+
+    if (!isDriveAuthorized()) {
+      console.log('Google Drive authorization: not yet authorized');
+      console.log('Visit /api/google-drive/auth to authorize Google Drive access.');
+    } else {
+      console.log('Google Drive authorization: refresh token available');
+      try {
+        const folderInfo = await ensureDriveAccess();
+        console.log('Google Drive folder verified:', folderInfo.name);
+      } catch (accessErr) {
+        console.error('Google Drive folder access check FAILED:', accessErr.message);
+        console.error('[Drive access diagnostic]', {
+          errorName: accessErr.name,
+          errorCode: accessErr.code,
+          folderId: normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID),
+          originalError: accessErr.originalError
+            ? {
+                code: accessErr.originalError.code,
+                status: accessErr.originalError.status,
+                statusText: accessErr.originalError.statusText,
+                data: accessErr.originalError.data,
+                message: accessErr.originalError.message,
+              }
+            : 'none',
+        });
+      }
+    }
   }
 
   const PORT = process.env.PORT || 8000;

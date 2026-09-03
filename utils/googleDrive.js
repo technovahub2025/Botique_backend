@@ -1,15 +1,19 @@
 const { google } = require('googleapis');
 const { Readable } = require('stream');
+const crypto = require('crypto');
+const fs = require('fs');
+const fsPromises = require('fs').promises;
+const path = require('path');
 
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
-let authClient = null;
-let googleDrive = null;
+const REFRESH_TOKEN_FILE = path.join(__dirname, '..', '.gdrive_refresh_token');
 
-/**
- * Normalize a Google Drive folder ID by trimming whitespace
- * and removing accidental surrounding quotes.
- */
+let oauth2Client = null;
+let drive = null;
+
+const oauthStates = new Map();
+
 function normalizeFolderId(value) {
   if (!value || typeof value !== 'string') {
     return value;
@@ -17,33 +21,6 @@ function normalizeFolderId(value) {
 
   let normalized = value.trim();
 
-  // Remove surrounding single/double quotes
-  if (
-    (normalized.startsWith('"') && normalized.endsWith('"')) ||
-    (normalized.startsWith("'") && normalized.endsWith("'")
-    )
-  ) {
-    normalized = normalized.slice(1, -1);
-  }
-
-  return normalized.trim();
-}
-
-/**
- * Normalize environment variable values.
- * Handles:
- * - surrounding quotes
- * - escaped newlines
- * - Windows CRLF characters
- */
-function normalizeSecretValue(value) {
-  if (!value || typeof value !== 'string') {
-    return value;
-  }
-
-  let normalized = value.trim();
-
-  // Remove surrounding single/double quotes
   if (
     (normalized.startsWith('"') && normalized.endsWith('"')) ||
     (normalized.startsWith("'") && normalized.endsWith("'"))
@@ -51,241 +28,170 @@ function normalizeSecretValue(value) {
     normalized = normalized.slice(1, -1);
   }
 
-  // Convert escaped \n into actual newlines
-  normalized = normalized
-    .replace(/\\n/g, '\n')
-    .replace(/\r/g, '');
-
-  return normalized;
+  return normalized.trim();
 }
 
-/**
- * Re-format a PEM key body into proper 64-char line breaks.
- * This fixes keys from environment variables that have had
- * newlines stripped (common on Render / Kubernetes / Docker).
- */
-function formatPemKey(keyBody, pemType) {
-  const cleaned = keyBody.replace(/\s+/g, '');
-  const lines = [];
-  for (let i = 0; i < cleaned.length; i += 64) {
-    lines.push(cleaned.slice(i, i + 64));
-  }
-  return `-----BEGIN ${pemType}-----\n${lines.join('\n')}\n-----END ${pemType}-----\n`;
-}
-
-/**
- * Normalize Google service-account private key.
- *
- * Supports:
- * - Normal PEM private keys (with or without line breaks)
- * - Environment variables containing escaped \n
- * - Base64 encoded PEM
- * - Raw key body without PEM boundaries
- */
-function normalizePrivateKey(value) {
-  let privateKey = normalizeSecretValue(value);
-
-  if (!privateKey) {
-    return privateKey;
-  }
-
-  const hasPemBoundary =
-    privateKey.includes('-----BEGIN') &&
-    privateKey.includes('-----END');
-
-  if (hasPemBoundary) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-
-    const beginIdx = privateKey.indexOf('-----BEGIN');
-    const endIdx = privateKey.indexOf('-----END');
-    if (beginIdx !== -1 && endIdx !== -1 && endIdx > beginIdx) {
-      const beginMatch = privateKey.substring(beginIdx).match(/-----BEGIN ([A-Z ]+)-----/);
-      const beginTag = beginMatch ? beginMatch[0] : '-----BEGIN PRIVATE KEY-----';
-      const pemType = beginMatch ? beginMatch[1] : 'PRIVATE KEY';
-
-      const endLineMatch = privateKey.substring(endIdx).match(/-----END ([A-Z ]+)-----/);
-      const endTag = endLineMatch ? endLineMatch[0] : '-----END PRIVATE KEY-----';
-
-      const beginTagEnd = beginIdx + beginTag.length;
-      const body = privateKey.substring(beginTagEnd, endIdx).trim();
-
-      privateKey = formatPemKey(body, pemType);
-    }
-  }
-
-  // Try base64 decoding if it doesn't already look like PEM
-  if (!hasPemBoundary) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-
-    const base64Candidate = privateKey.replace(/\s+/g, '');
-
-    if (/^[A-Za-z0-9+/=]+$/.test(base64Candidate)) {
-      try {
-        const decoded = Buffer.from(
-          base64Candidate,
-          'base64'
-        )
-          .toString('utf8')
-          .trim();
-
-        if (
-          decoded.includes('-----BEGIN') &&
-          decoded.includes('-----END')
-        ) {
-          privateKey = decoded.replace(/\r/g, '');
-        }
-      } catch (decodeErr) {
-        // Ignore and continue with normal handling
-      }
-    }
-  }
-
-  // Add PEM boundaries if they are missing
-  if (!privateKey.includes('-----BEGIN')) {
-    privateKey =
-      `-----BEGIN PRIVATE KEY-----\n` +
-      `${privateKey}\n` +
-      `-----END PRIVATE KEY-----\n`;
-  }
-
-  return privateKey;
-}
-
-/**
- * Load Google Drive credentials.
- *
- * Priority:
- * 1. GOOGLE_SERVICE_ACCOUNT_JSON
- * 2. GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY
- */
-function loadGoogleDriveCredentials() {
-  // Optional service-account JSON support
-  const serviceAccountJson = normalizeSecretValue(
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+function isOAuthConfigured() {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REDIRECT_URI &&
+    process.env.GOOGLE_DRIVE_FOLDER_ID
   );
-
-  if (serviceAccountJson) {
-    try {
-      const parsed = JSON.parse(serviceAccountJson);
-
-      const clientEmail =
-        parsed.client_email ||
-        parsed.clientEmail;
-
-      const privateKey = normalizePrivateKey(
-        parsed.private_key ||
-        parsed.privateKey
-      );
-
-      if (clientEmail && privateKey) {
-        return {
-          clientEmail,
-          privateKey,
-        };
-      }
-    } catch (err) {
-      // Ignore JSON parsing errors and
-      // fall back to separate environment variables.
-    }
-  }
-
-  const clientEmail = normalizeSecretValue(
-    process.env.GOOGLE_CLIENT_EMAIL
-  );
-
-  const privateKey = normalizePrivateKey(
-    process.env.GOOGLE_PRIVATE_KEY
-  );
-
-  return {
-    clientEmail,
-    privateKey,
-  };
 }
 
-/**
- * Create and cache Google Drive client.
- */
-function getDriveClient() {
-  if (googleDrive) {
-    return googleDrive;
+function isDriveAuthorized() {
+  return Boolean(getStoredRefreshToken());
+}
+
+function getStoredRefreshToken() {
+  const envToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+  if (envToken && envToken.trim()) {
+    return envToken.trim();
   }
-
-  const {
-    clientEmail,
-    privateKey,
-  } = loadGoogleDriveCredentials();
-
-  if (!clientEmail || !privateKey) {
-    const err = new Error(
-      'Google Drive credentials not configured. Missing GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY.'
-    );
-
-    err.code = 'DRIVE_CONFIG_ERROR';
-
-    throw err;
-  }
-
-  const crypto = require('crypto');
 
   try {
-    const keyObject = crypto.createPrivateKey(privateKey);
-    console.error('[Drive key format]', {
-      type: keyObject.type,
-      asymmetricKeyType: keyObject.asymmetricKeyType,
-      keyBits: keyObject.keyLength || 'n/a',
-    });
-  } catch (keyErr) {
-    console.error('[Drive key parse error]', {
-      message: 'GOOGLE_PRIVATE_KEY could not be parsed as a valid service-account private key',
-      originalError: keyErr.message,
-      code: keyErr.code,
-      credentialConfigured: true,
-      clientEmailConfigured: !!process.env.GOOGLE_CLIENT_EMAIL,
-      privateKeyConfigured: !!process.env.GOOGLE_PRIVATE_KEY,
-      startsWithBeginPrivateKey: privateKey.trim().startsWith('-----BEGIN'),
-      endsWithEndPrivateKey: privateKey.trim().endsWith('-----END PRIVATE KEY-----'),
-      keyLength: privateKey.length,
-      folderIdConfigured: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
-    });
-    throw new Error(
-      'GOOGLE_PRIVATE_KEY could not be parsed as a valid service-account private key. ' +
-      'The key must be a valid PEM-encoded RSA private key with proper 64-character line breaks. ' +
-      'Ensure the GOOGLE_PRIVATE_KEY environment variable preserves newlines (use literal newlines, not escaped \\n sequences, if your platform strips them).'
-    );
-  }
-
-  let jwtClient;
-
-  try {
-    jwtClient = new google.auth.JWT({
-      email: clientEmail,
-      key: privateKey,
-      scopes: SCOPES,
-    });
+    if (fs.existsSync(REFRESH_TOKEN_FILE)) {
+      const token = fs.readFileSync(REFRESH_TOKEN_FILE, 'utf8').trim();
+      if (token) return token;
+    }
   } catch (err) {
-    err.code = 'DRIVE_AUTH_ERROR';
+    // File doesn't exist or can't be read
+  }
 
-    err.message =
-      'Google Drive authentication failed. Check that GOOGLE_PRIVATE_KEY is a valid unencrypted service-account private key with preserved newlines.';
+  return null;
+}
 
+async function saveRefreshToken(token) {
+  await fsPromises.writeFile(REFRESH_TOKEN_FILE, token.trim(), { mode: 0o600 });
+}
+
+function resetOAuthCache() {
+  oauth2Client = null;
+  drive = null;
+}
+
+function getOAuthClient() {
+  if (oauth2Client) {
+    return oauth2Client;
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    const err = new Error(
+      'Google Drive OAuth credentials not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI.'
+    );
+    err.code = 'DRIVE_CONFIG_ERROR';
     throw err;
   }
 
-  googleDrive = google.drive({
-    version: 'v3',
-    auth: jwtClient,
+  oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+
+  const refreshToken = getStoredRefreshToken();
+  if (refreshToken) {
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+  }
+
+  oauth2Client.on('tokens', (tokens) => {
+    if (tokens.refresh_token) {
+      saveRefreshToken(tokens.refresh_token).catch((err) => {
+        console.error('[Drive token refresh save error]', {
+          message: err.message,
+        });
+      });
+    }
   });
 
-  authClient = jwtClient;
-
-  return googleDrive;
+  return oauth2Client;
 }
 
-/**
- * Verify that the configured Google Drive folder
- * exists and is accessible by the service account.
- */
+function getDriveClient() {
+  if (drive) {
+    return drive;
+  }
+
+  const client = getOAuthClient();
+
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) {
+    const err = new Error(
+      'Google Drive is not authorized. Please complete Google Drive authorization first.'
+    );
+    err.code = 'DRIVE_NOT_AUTHORIZED';
+    throw err;
+  }
+
+  drive = google.drive({ version: 'v3', auth: client });
+  return drive;
+}
+
+function getAuthClient() {
+  return oauth2Client;
+}
+
+function generateState() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function storeState(state, ttlMs) {
+  oauthStates.set(state, { expiresAt: Date.now() + ttlMs });
+  setTimeout(() => oauthStates.delete(state), ttlMs).unref();
+}
+
+function validateState(state) {
+  if (!state) {
+    return false;
+  }
+
+  const entry = oauthStates.get(state);
+  if (!entry) {
+    return false;
+  }
+
+  if (Date.now() > entry.expiresAt) {
+    oauthStates.delete(state);
+    return false;
+  }
+
+  oauthStates.delete(state);
+  return true;
+}
+
+function getAuthUrl() {
+  const client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+
+  const state = generateState();
+  storeState(state, 5 * 60 * 1000);
+
+  const authUrl = client.generateAuthUrl({
+    access_type: 'offline',
+    scope: SCOPES,
+    state: state,
+    include_granted_scopes: true,
+    response_type: 'code',
+  });
+
+  return { authUrl, state };
+}
+
+async function exchangeCodeForTokens(code) {
+  const client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
+
+  const { tokens } = await client.getToken(code);
+  return tokens;
+}
+
 async function ensureDriveAccess() {
   const drive = getDriveClient();
 
@@ -293,19 +199,14 @@ async function ensureDriveAccess() {
 
   if (!folderId) {
     const err = new Error(
-      'Google Drive folder ID not configured. Missing GOOGLE_DRIVE_FOLDER_ID.'
+      'Google Drive folder ID not configured. Set GOOGLE_DRIVE_FOLDER_ID.'
     );
-
     err.code = 'DRIVE_CONFIG_ERROR';
-
     throw err;
   }
 
-  const { clientEmail } = loadGoogleDriveCredentials();
-
   console.error('[Drive folder access check]', {
     folderId: folderId,
-    serviceAccount: clientEmail,
     oauthScope: SCOPES,
     folderIdLength: folderId.length,
   });
@@ -317,10 +218,7 @@ async function ensureDriveAccess() {
       supportsAllDrives: true,
     });
 
-    if (
-      response.data.mimeType ===
-      'application/vnd.google-apps.folder'
-    ) {
+    if (response.data.mimeType === 'application/vnd.google-apps.folder') {
       return {
         folderId: response.data.id,
         name: response.data.name,
@@ -328,31 +226,26 @@ async function ensureDriveAccess() {
     }
 
     const err = new Error(
-      `ID ${folderId} does not point to a Drive folder.`
+      `ID ${folderId} does not point to a Google Drive folder.`
     );
-
     err.code = 'DRIVE_FOLDER_ERROR';
-
     throw err;
   } catch (err) {
     if (err.code === 404) {
       const folderErr = new Error(
-        'Google Drive folder not found. Verify the folder ID and sharing permissions.'
+        'Google Drive folder not found. Verify the folder ID and access permissions.'
       );
-
       folderErr.code = 'DRIVE_FOLDER_ERROR';
-
       folderErr.originalError = {
         code: err.code,
         status: err.response?.status,
         statusText: err.response?.statusText,
-        data: err.response?.data,
+        data: JSON.stringify(err.response?.data),
         message: err.message,
       };
 
       console.error('[Drive folder access FAILED]', {
         folderId: folderId,
-        serviceAccount: clientEmail,
         googleApiCode: err.code,
         googleApiStatus: err.response?.status,
         googleApiMessage: err.message,
@@ -363,16 +256,14 @@ async function ensureDriveAccess() {
 
     if (err.code === 403) {
       const permErr = new Error(
-        'Google Drive access denied. Ensure the service account has access to the folder.'
+        'Google Drive access denied. The authorized account must have access to this folder.'
       );
-
       permErr.code = 'DRIVE_PERM_ERROR';
-
       permErr.originalError = {
         code: err.code,
         status: err.response?.status,
         statusText: err.response?.statusText,
-        data: err.response?.data,
+        data: JSON.stringify(err.response?.data),
         message: err.message,
       };
 
@@ -384,7 +275,7 @@ async function ensureDriveAccess() {
         code: err.code,
         status: err.response?.status,
         statusText: err.response?.statusText,
-        data: err.response?.data,
+        data: JSON.stringify(err.response?.data),
         message: err.message,
       };
     }
@@ -393,36 +284,24 @@ async function ensureDriveAccess() {
   }
 }
 
-/**
- * Upload an image/file buffer to Google Drive.
- */
-async function uploadBufferToDrive(
-  buffer,
-  originalName,
-  mimeType
-) {
+async function uploadBufferToDrive(buffer, originalName, mimeType) {
   if (!Buffer.isBuffer(buffer)) {
     const err = new Error(
       'Invalid upload buffer. Expected a Buffer.'
     );
-
     err.code = 'DRIVE_UPLOAD_BUFFER_ERROR';
-
     throw err;
   }
 
   const drive = getDriveClient();
 
-  const folderId =
-    normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID);
+  const folderId = normalizeFolderId(process.env.GOOGLE_DRIVE_FOLDER_ID);
 
   if (!folderId) {
     const err = new Error(
-      'Google Drive folder ID not configured. Missing GOOGLE_DRIVE_FOLDER_ID.'
+      'Google Drive folder ID not configured. Set GOOGLE_DRIVE_FOLDER_ID.'
     );
-
     err.code = 'DRIVE_CONFIG_ERROR';
-
     throw err;
   }
 
@@ -430,9 +309,7 @@ async function uploadBufferToDrive(
     const err = new Error(
       'Original file name is required for Google Drive upload.'
     );
-
     err.code = 'DRIVE_UPLOAD_NAME_ERROR';
-
     throw err;
   }
 
@@ -440,9 +317,7 @@ async function uploadBufferToDrive(
     const err = new Error(
       'MIME type is required for Google Drive upload.'
     );
-
     err.code = 'DRIVE_UPLOAD_MIME_ERROR';
-
     throw err;
   }
 
@@ -475,14 +350,12 @@ async function uploadBufferToDrive(
     const uploadErr = new Error(
       'Failed to upload file to Google Drive.'
     );
-
     uploadErr.code = 'DRIVE_UPLOAD_ERROR';
-
     uploadErr.originalError = {
       code: err.code,
       status: err.response?.status,
       statusText: err.response?.statusText,
-      data: err.response?.data,
+      data: JSON.stringify(err.response?.data),
       message: err.message,
     };
 
@@ -490,9 +363,6 @@ async function uploadBufferToDrive(
   }
 }
 
-/**
- * Get metadata for a Google Drive file.
- */
 async function getFileMetadata(driveFileId) {
   const drive = getDriveClient();
 
@@ -500,9 +370,7 @@ async function getFileMetadata(driveFileId) {
     const err = new Error(
       'Google Drive file ID is required.'
     );
-
     err.code = 'DRIVE_FILE_ID_ERROR';
-
     throw err;
   }
 
@@ -522,10 +390,7 @@ async function getFileMetadata(driveFileId) {
       const notFoundErr = new Error(
         'File not found in Google Drive'
       );
-
-      notFoundErr.code =
-        'DRIVE_FILE_NOT_FOUND';
-
+      notFoundErr.code = 'DRIVE_FILE_NOT_FOUND';
       throw notFoundErr;
     }
 
@@ -533,12 +398,6 @@ async function getFileMetadata(driveFileId) {
   }
 }
 
-/**
- * Download a Google Drive file as a readable stream.
- *
- * This can be used by the backend image proxy so
- * Google Drive files do not need to be publicly accessible.
- */
 async function downloadFileStream(driveFileId) {
   const drive = getDriveClient();
 
@@ -546,9 +405,7 @@ async function downloadFileStream(driveFileId) {
     const err = new Error(
       'Google Drive file ID is required.'
     );
-
     err.code = 'DRIVE_FILE_ID_ERROR';
-
     throw err;
   }
 
@@ -570,10 +427,7 @@ async function downloadFileStream(driveFileId) {
       const notFoundErr = new Error(
         'File not found in Google Drive'
       );
-
-      notFoundErr.code =
-        'DRIVE_FILE_NOT_FOUND';
-
+      notFoundErr.code = 'DRIVE_FILE_NOT_FOUND';
       throw notFoundErr;
     }
 
@@ -581,9 +435,6 @@ async function downloadFileStream(driveFileId) {
   }
 }
 
-/**
- * Delete a file from Google Drive.
- */
 async function deleteDriveFile(driveFileId) {
   const drive = getDriveClient();
 
@@ -591,9 +442,7 @@ async function deleteDriveFile(driveFileId) {
     const err = new Error(
       'Google Drive file ID is required.'
     );
-
     err.code = 'DRIVE_FILE_ID_ERROR';
-
     throw err;
   }
 
@@ -613,14 +462,6 @@ async function deleteDriveFile(driveFileId) {
   }
 }
 
-/**
- * Make a Google Drive file publicly readable.
- *
- * NOTE:
- * If the application uses the backend proxy
- * (/api/uploads/drive/:fileId), this function is
- * normally NOT required.
- */
 async function setFilePermissions(driveFileId) {
   const drive = getDriveClient();
 
@@ -628,9 +469,7 @@ async function setFilePermissions(driveFileId) {
     const err = new Error(
       'Google Drive file ID is required.'
     );
-
     err.code = 'DRIVE_FILE_ID_ERROR';
-
     throw err;
   }
 
@@ -648,7 +487,6 @@ async function setFilePermissions(driveFileId) {
 
     return true;
   } catch (err) {
-    // Permission already exists
     if (err.code === 409) {
       return true;
     }
@@ -657,25 +495,23 @@ async function setFilePermissions(driveFileId) {
   }
 }
 
-/**
- * Get the currently configured auth client.
- * Useful for diagnostics/testing.
- */
-function getAuthClient() {
-  return authClient;
-}
-
 module.exports = {
+  isOAuthConfigured,
+  isDriveAuthorized,
+  getOAuthClient,
   getDriveClient,
   getAuthClient,
+  getAuthUrl,
+  validateState,
+  exchangeCodeForTokens,
+  saveRefreshToken,
+  getStoredRefreshToken,
+  resetOAuthCache,
   ensureDriveAccess,
   uploadBufferToDrive,
   getFileMetadata,
   downloadFileStream,
   deleteDriveFile,
   setFilePermissions,
-  normalizeSecretValue,
-  normalizePrivateKey,
   normalizeFolderId,
-  loadGoogleDriveCredentials,
 };

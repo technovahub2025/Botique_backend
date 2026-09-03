@@ -1,11 +1,15 @@
 const express = require('express');
-const fsPromises = require('fs').promises;
 const path = require('path');
 const upload = require('../middleware/upload');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
 const asyncHandler = require('../middleware/asyncHandler');
-const { uploadBufferToDrive, deleteDriveFile, loadGoogleDriveCredentials } = require('../utils/googleDrive');
+const {
+  uploadBufferToDrive,
+  deleteDriveFile,
+  isOAuthConfigured,
+  isDriveAuthorized,
+} = require('../utils/googleDrive');
 const { getDriveImage } = require('../controllers/uploadController');
 
 const router = express.Router();
@@ -14,24 +18,21 @@ router.get('/drive/:fileId', getDriveImage);
 
 router.use(protect, admin);
 
-const isDriveConfigured = () => {
-  const { clientEmail, privateKey } = loadGoogleDriveCredentials();
-  return Boolean(
-    clientEmail &&
-    privateKey &&
-    process.env.GOOGLE_DRIVE_FOLDER_ID
-  );
+const isDriveReady = () => {
+  const configured = isOAuthConfigured();
+  const authorized = isDriveAuthorized();
+  return Boolean(configured && authorized);
 };
 
 const logDriveEnvCheck = () => {
-  const { clientEmail } = loadGoogleDriveCredentials();
   console.error('[Drive env check]', {
-    hasProjectId: !!process.env.GOOGLE_PROJECT_ID,
-    hasClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
-    hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+    oauthConfigured: isOAuthConfigured(),
+    authorized: isDriveAuthorized(),
+    hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+    hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+    hasRedirectUri: !!process.env.GOOGLE_REDIRECT_URI,
     hasFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
-    clientEmail: clientEmail,
-    folderId: process.env.GOOGLE_DRIVE_FOLDER_ID,
+    hasRefreshToken: !!process.env.GOOGLE_DRIVE_REFRESH_TOKEN,
   });
 };
 
@@ -43,8 +44,8 @@ const logDriveError = (err) => {
     status: err.status,
     responseStatus: err.response?.status,
     responseStatusText: err.response?.statusText,
-    responseData: JSON.stringify(err.response?.data, null, 2),
-    errorKeys: Object.keys(err).filter(k => k !== 'response').join(', '),
+    responseData: JSON.stringify(err.response?.data),
+    errorKeys: Object.keys(err).filter((k) => k !== 'response').join(', '),
     responseKeys: err.response ? Object.keys(err.response).join(', ') : 'none',
     originalError: err.originalError
       ? {
@@ -71,10 +72,20 @@ router.post(
     const { originalname, mimetype, buffer } = req.file;
     const base = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
 
-    if (!isDriveConfigured()) {
+    if (!isOAuthConfigured()) {
       logDriveEnvCheck();
-      console.error('Google Drive not configured. Cannot upload images.');
+      console.error('Google Drive OAuth not configured. Cannot upload images.');
       const error = new Error('Google Drive storage is not configured on the server.');
+      error.statusCode = 503;
+      throw error;
+    }
+
+    if (!isDriveAuthorized()) {
+      logDriveEnvCheck();
+      console.error('Google Drive is not authorized. Cannot upload images.');
+      const error = new Error(
+        'Google Drive is not authorized. Please complete Google Drive authorization.'
+      );
       error.statusCode = 503;
       throw error;
     }
@@ -115,7 +126,7 @@ router.delete(
       throw error;
     }
 
-    if (isDriveConfigured()) {
+    if (isDriveReady()) {
       try {
         await deleteDriveFile(fileId);
         res.status(200).json({ success: true, message: 'File deleted from Google Drive' });
@@ -132,7 +143,7 @@ router.delete(
 
     const localFile = path.join(__dirname, '..', 'uploads', fileId);
     try {
-      await fsPromises.unlink(localFile);
+      await require('fs').promises.unlink(localFile);
     } catch (err) {
       if (err.code !== 'ENOENT') {
         throw err;
