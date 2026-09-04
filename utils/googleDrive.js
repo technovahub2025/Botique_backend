@@ -172,6 +172,7 @@ function getAuthUrl() {
 
   const authUrl = client.generateAuthUrl({
     access_type: 'offline',
+    prompt: 'consent',
     scope: SCOPES,
     state: state,
     include_granted_scopes: true,
