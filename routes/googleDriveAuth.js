@@ -162,12 +162,13 @@ router.get(
       }
 
       if (folderInfo) {
+        const fallbackUrl = frontendAdminUrl || process.env.FRONTEND_URL || 'https://technovahub.in/test_boutique/admin';
         return res.send(`
           <!DOCTYPE html>
           <html>
             <head>
               <title>Google Drive Authorization Successful</title>
-              <meta http-equiv="refresh" content="3;url=/test_boutique/admin">
+              <meta http-equiv="refresh" content="3;url=${fallbackUrl}">
             </head>
             <body style="font-family: sans-serif; max-width: 500px; margin: 50px auto; padding: 20px;">
               <h1>Authorization Successful</h1>
