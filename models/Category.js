@@ -11,6 +11,12 @@ const categorySchema = new mongoose.Schema(
       originalName: { type: String },
       mimeType: { type: String },
     },
+    video: { type: String, default: '' },
+    videoMetadata: {
+      driveFileId: { type: String },
+      originalName: { type: String },
+      mimeType: { type: String },
+    },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     order: { type: Number, default: 0 },
   },

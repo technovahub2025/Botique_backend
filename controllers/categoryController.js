@@ -67,7 +67,7 @@ const getCategoryById = asyncHandler(async (req, res) => {
 });
 
 const createCategory = asyncHandler(async (req, res) => {
-  const { name, slug, description, image, status, order } = req.body;
+  const { name, slug, description, image, video, status, order } = req.body;
 
   const errors = [];
 
@@ -102,6 +102,7 @@ const createCategory = asyncHandler(async (req, res) => {
   else categoryData.slug = slugify(name);
   if (description !== undefined && description !== null) categoryData.description = description.trim();
   if (image !== undefined && image !== null) categoryData.image = image;
+  if (video !== undefined && video !== null) categoryData.video = video;
   if (status) categoryData.status = status;
   if (order !== undefined && order !== null) categoryData.order = Number(order);
 
@@ -125,7 +126,7 @@ const createCategory = asyncHandler(async (req, res) => {
 
 const updateCategory = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, slug, description, image, status, order } = req.body;
+  const { name, slug, description, image, video, status, order } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw makeError('Invalid category ID', 400);
@@ -181,6 +182,7 @@ const updateCategory = asyncHandler(async (req, res) => {
     category.description = description !== null ? description.trim() : category.description;
   }
   if (image !== undefined) category.image = image;
+  if (video !== undefined) category.video = video;
   if (status !== undefined) category.status = status;
   if (order !== undefined && order !== null) category.order = Number(order);
 

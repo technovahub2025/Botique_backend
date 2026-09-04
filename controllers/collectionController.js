@@ -94,7 +94,9 @@ const createCollection = asyncHandler(async (req, res) => {
     slug,
     description,
     heroImage,
+    heroVideo,
     bannerImage,
+    bannerVideo,
     featured,
     status,
   } = req.body;
@@ -132,7 +134,9 @@ const createCollection = asyncHandler(async (req, res) => {
   else collectionData.slug = slugify(name);
   if (description !== undefined && description !== null) collectionData.description = description.trim();
   if (heroImage !== undefined && heroImage !== null) collectionData.heroImage = heroImage;
+  if (heroVideo !== undefined && heroVideo !== null) collectionData.heroVideo = heroVideo;
   if (bannerImage !== undefined && bannerImage !== null) collectionData.bannerImage = bannerImage;
+  if (bannerVideo !== undefined && bannerVideo !== null) collectionData.bannerVideo = bannerVideo;
   if (featured !== undefined) collectionData.featured = fb;
   if (status) collectionData.status = status;
 
@@ -156,7 +160,7 @@ const createCollection = asyncHandler(async (req, res) => {
 
 const updateCollection = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, slug, description, heroImage, bannerImage, featured, status } = req.body;
+  const { name, slug, description, heroImage, heroVideo, bannerImage, bannerVideo, featured, status } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw makeError('Invalid collection ID', 400);
@@ -212,7 +216,9 @@ const updateCollection = asyncHandler(async (req, res) => {
     collection.description = description !== null ? description.trim() : collection.description;
   }
   if (heroImage !== undefined) collection.heroImage = heroImage;
+  if (heroVideo !== undefined) collection.heroVideo = heroVideo;
   if (bannerImage !== undefined) collection.bannerImage = bannerImage;
+  if (bannerVideo !== undefined) collection.bannerVideo = bannerVideo;
   if (featured !== undefined) collection.featured = fb;
   if (status !== undefined) collection.status = status;
 

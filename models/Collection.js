@@ -11,8 +11,20 @@ const collectionSchema = new mongoose.Schema(
       originalName: { type: String },
       mimeType: { type: String },
     },
+    heroVideo: { type: String, default: '' },
+    heroVideoMetadata: {
+      driveFileId: { type: String },
+      originalName: { type: String },
+      mimeType: { type: String },
+    },
     bannerImage: { type: String, default: '' },
     bannerImageMetadata: {
+      driveFileId: { type: String },
+      originalName: { type: String },
+      mimeType: { type: String },
+    },
+    bannerVideo: { type: String, default: '' },
+    bannerVideoMetadata: {
       driveFileId: { type: String },
       originalName: { type: String },
       mimeType: { type: String },
