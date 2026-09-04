@@ -60,21 +60,12 @@ router.get('/status', asyncHandler(async (req, res) => {
 
 router.get(
   '/auth',
-  protect,
-  admin,
   asyncHandler(async (req, res) => {
     if (!isOAuthConfigured()) {
       return res.status(500).json({
         success: false,
         message:
           'Google Drive OAuth is not configured. Please contact your system administrator.',
-      });
-    }
-
-    if (!req.user || req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Admin authorization required.',
       });
     }
 
