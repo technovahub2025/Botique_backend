@@ -9,14 +9,17 @@ const upload = multer({
   },
 
   fileFilter: (req, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|mp4|webm|ogg/;
+    const allowedImageMime = /jpeg|jpg|png|gif|webp|bmp|tiff/;
+    const allowedVideoMime = /mp4|webm|quicktime|ogg|mpeg/;
+    const allowedExt = /jpeg|jpg|png|gif|webp|bmp|tiff|mp4|webm|mov|m4v|ogg|ogv/;
 
     const ext = file.originalname.split('.').pop().toLowerCase();
 
-    const isValidMime = allowed.test(file.mimetype);
-    const isValidExt = allowed.test(ext);
+    const isImageMime = allowedImageMime.test(file.mimetype);
+    const isVideoMime = allowedVideoMime.test(file.mimetype);
+    const isValidExt = allowedExt.test(ext);
 
-    if (isValidMime && isValidExt) {
+    if ((isImageMime || isVideoMime) && isValidExt) {
       cb(null, true);
     } else {
       cb(new Error('Only image and video files are allowed'), false);

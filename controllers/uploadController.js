@@ -12,6 +12,23 @@ const IMAGE_MIME_TYPES = {
   'application/octet-stream': 'application/octet-stream',
 };
 
+const VIDEO_MIME_TYPES = {
+  'video/mp4': 'video/mp4',
+  'video/webm': 'video/webm',
+  'video/quicktime': 'video/quicktime',
+  'video/x-m4v': 'video/x-m4v',
+  'video/x-msvideo': 'video/x-msvideo',
+  'video/ogg': 'video/ogg',
+  'application/octet-stream': 'application/octet-stream',
+};
+
+const getMimeType = (mimeType, isVideo = false) => {
+  if (isVideo) {
+    return VIDEO_MIME_TYPES[mimeType] || mimeType;
+  }
+  return IMAGE_MIME_TYPES[mimeType] || mimeType;
+};
+
 const streamFile = (req, res, stream, mimeType, contentLength) => {
   const origin = req.headers.origin;
   if (origin) {
@@ -40,20 +57,22 @@ const getDriveImage = async (req, res, next) => {
   }
 
   try {
-    let mimeType = req.query.mime || 'image/jpeg';
+    let mimeType = req.query.mime;
 
-    if (mimeType in IMAGE_MIME_TYPES) {
-      mimeType = IMAGE_MIME_TYPES[mimeType];
-    }
-
+    let isVideo = false;
     try {
       const metadata = await getFileMetadata(fileId);
       mimeType = metadata.mimeType || mimeType;
+      if (metadata.mimeType && metadata.mimeType.startsWith('video/')) {
+        isVideo = true;
+      }
     } catch (metaErr) {
       if (metaErr.code !== 'DRIVE_FILE_NOT_FOUND' && metaErr.code !== 404) {
         console.error('Failed to fetch metadata:', metaErr.message);
       }
     }
+
+    mimeType = getMimeType(mimeType, isVideo);
 
     const stream = await downloadFileStream(fileId);
     streamFile(req, res, stream, mimeType);

@@ -64,7 +64,7 @@ router.post(
   upload.single('image'),
   asyncHandler(async (req, res) => {
     if (!req.file) {
-      const error = new Error('No image uploaded');
+      const error = new Error('No file uploaded');
       error.statusCode = 400;
       throw error;
     }
@@ -74,7 +74,7 @@ router.post(
 
     if (!isOAuthConfigured()) {
       logDriveEnvCheck();
-      console.error('Google Drive OAuth not configured. Cannot upload images.');
+      console.error('Google Drive OAuth not configured. Cannot upload files.');
       const error = new Error('Google Drive storage is not configured on the server.');
       error.statusCode = 503;
       throw error;
@@ -82,7 +82,7 @@ router.post(
 
     if (!isDriveAuthorized()) {
       logDriveEnvCheck();
-      console.error('Google Drive is not authorized. Cannot upload images.');
+      console.error('Google Drive is not authorized. Cannot upload files.');
       const error = new Error(
         'Google Drive is not authorized. Please complete Google Drive authorization.'
       );
@@ -96,7 +96,7 @@ router.post(
     } catch (driveErr) {
       logDriveError(driveErr);
       logDriveEnvCheck();
-      throw new Error('Failed to upload image to Google Drive. Please check server configuration and try again.');
+      throw new Error('Failed to upload file to Google Drive. Please check server configuration and try again.');
     }
 
     const proxyUrl = `${base}/api/upload/drive/${driveResult.driveFileId}`;
@@ -111,6 +111,7 @@ router.post(
       driveFileId: driveResult.driveFileId,
       originalName: driveResult.name,
       mimeType: driveResult.mimeType,
+      size: driveResult.size,
     });
   })
 );
