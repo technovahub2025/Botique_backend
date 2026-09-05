@@ -1,3 +1,4 @@
+```js
 const multer = require('multer');
 
 const upload = multer({
@@ -9,22 +10,53 @@ const upload = multer({
   },
 
   fileFilter: (req, file, cb) => {
-    const allowedImageMime = /jpeg|jpg|png|gif|webp|jfif|bmp|tiff/;
-    const allowedVideoMime = /mp4|webm|quicktime|ogg|mpeg/;
-    const allowedExt = /jpeg|jpg|jfif|png|gif|webp|bmp|tiff|mp4|webm|mov|m4v|ogg|ogv/;
+    // Allowed file extensions
+    const allowedImageExt = [
+      'jpg',
+      'jpeg',
+      'jfif',
+      'png',
+      'gif',
+      'webp',
+      'bmp',
+      'tiff',
+      'tif',
+    ];
 
-    const ext = file.originalname.split('.').pop().toLowerCase();
+    const allowedVideoExt = [
+      'mp4',
+      'webm',
+      'mov',
+      'm4v',
+      'ogg',
+      'ogv',
+      'mpeg',
+      'mpg',
+    ];
 
-    const isImageMime = allowedImageMime.test(file.mimetype);
-    const isVideoMime = allowedVideoMime.test(file.mimetype);
-    const isValidExt = allowedExt.test(ext);
+    // Get extension safely
+    const ext = file.originalname
+      .split('.')
+      .pop()
+      .toLowerCase();
 
-    if ((isImageMime || isVideoMime) && isValidExt) {
+    const isImage = allowedImageExt.includes(ext);
+    const isVideo = allowedVideoExt.includes(ext);
+
+    // Accept based on extension.
+    // Browsers may send JFIF as image/jpeg or application/octet-stream.
+    if (isImage || isVideo) {
       cb(null, true);
     } else {
-      cb(new Error('Only image and video files are allowed'), false);
+      cb(
+        new Error(
+          'Only JPG, JPEG, JFIF, PNG, GIF, WEBP, BMP, TIFF, MP4, WEBM, MOV, M4V, OGG and OGV files are allowed'
+        ),
+        false
+      );
     }
   },
 });
 
 module.exports = upload;
+```
