@@ -9,9 +9,9 @@ const upload = multer({
   },
 
   fileFilter: (req, file, cb) => {
-    const allowedImageMime = /jpeg|jpg|png|gif|webp|bmp|tiff/;
+    const allowedImageMime = /jpeg|jpg|png|gif|webp|jfif|bmp|tiff/;
     const allowedVideoMime = /mp4|webm|quicktime|ogg|mpeg/;
-    const allowedExt = /jpeg|jpg|png|gif|webp|bmp|tiff|mp4|webm|mov|m4v|ogg|ogv/;
+    const allowedExt = /jpeg|jpg|jfif|png|gif|webp|bmp|tiff|mp4|webm|mov|m4v|ogg|ogv/;
 
     const ext = file.originalname.split('.').pop().toLowerCase();
 
