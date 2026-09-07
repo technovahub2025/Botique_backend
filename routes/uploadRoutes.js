@@ -137,6 +137,13 @@ router.delete(
           res.status(200).json({ success: true, message: 'File already deleted' });
           return;
         }
+        if (err.code === 'DRIVE_NOT_AUTHORIZED' || err.code === 403) {
+          const authErr = new Error(
+            'Google Drive authentication failed. The refresh token may be invalid.'
+          );
+          authErr.statusCode = 403;
+          throw authErr;
+        }
         console.error('Google Drive delete failed:', err.message);
         throw err;
       }
