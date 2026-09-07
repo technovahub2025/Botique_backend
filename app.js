@@ -10,7 +10,6 @@ const path = require('path');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
-const healthRoutes = require('./routes/healthRoutes');
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
@@ -90,8 +89,6 @@ app.use('/api/', apiLimiter);
 
 /* API Routes */
 
-app.use('/api/health', healthRoutes);
-
 app.use('/api/auth', authRoutes);
 
 app.use('/api/products', productRoutes);
@@ -121,6 +118,23 @@ app.use('/api/google-drive', googleDriveAuthRoutes);
 
 app.use('/api/settings', settingsRoutes);
 
+
+/* Health Check */
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Boutique backend is running',
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Backend healthy',
+  });
+});
+
 /* Error Handling */
 
 app.use(notFound);
@@ -128,3 +142,4 @@ app.use(notFound);
 app.use(errorHandler);
 
 module.exports = app;
+
