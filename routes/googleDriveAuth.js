@@ -23,19 +23,39 @@ const router = express.Router();
 
 /**
  * =========================================================
+ * FRONTEND URL
+ * =========================================================
+ *
+ * Used only after backend-side Google Drive setup/reconnect.
+ *
+ * Normal frontend usage does NOT need Google authorization.
+ */
+function getFrontendUrl() {
+  return (
+    process.env.FRONTEND_URL ||
+    'https://technovahub.in/test_boutique'
+  );
+}
+
+/**
+ * =========================================================
  * GOOGLE DRIVE STATUS
  * =========================================================
  *
  * GET /api/google-drive/status
  *
  * This endpoint checks:
+ *
  * - OAuth configuration
  * - Whether a refresh token exists
  * - Whether Google Drive can be accessed
  * - Whether the configured folder is accessible
  *
- * This endpoint is intentionally not protected so the
- * frontend can check Google Drive connection status.
+ * IMPORTANT:
+ * This endpoint does NOT start OAuth.
+ *
+ * The frontend can safely call this endpoint without
+ * causing a Google authorization page to appear.
  */
 router.get(
   '/status',
@@ -54,19 +74,31 @@ router.get(
         : undefined,
     };
 
-    // Google Drive OAuth is not configured
+    /**
+     * Google Drive OAuth is not configured.
+     */
     if (!configured) {
       return res.status(200).json(result);
     }
 
-    // No refresh token available
+    /**
+     * No refresh token available.
+     *
+     * IMPORTANT:
+     * Do NOT redirect to Google here.
+     *
+     * This keeps the frontend completely silent.
+     */
     if (!authorized) {
       return res.status(200).json(result);
     }
 
     try {
       /**
-       * Try to get Google Drive account information.
+       * getDriveUserInfo() uses the stored refresh token.
+       *
+       * Google OAuth automatically obtains a new access token
+       * when necessary.
        */
       const userInfo = await getDriveUserInfo();
 
@@ -74,8 +106,7 @@ router.get(
       result.email = userInfo?.emailAddress || null;
 
       /**
-       * Verify that the configured Google Drive folder
-       * is actually accessible.
+       * Verify the configured Drive folder.
        */
       try {
         await ensureDriveAccess();
@@ -106,16 +137,37 @@ router.get(
 
 /**
  * =========================================================
- * START GOOGLE DRIVE AUTHORIZATION
+ * GOOGLE DRIVE AUTHORIZATION / SETUP
  * =========================================================
  *
  * GET /api/google-drive/auth
  *
- * Opens Google's OAuth authorization page.
+ * IMPORTANT:
+ *
+ * This route is NOT part of the normal frontend flow.
+ *
+ * Behaviour:
+ *
+ * 1. OAuth is not configured
+ *       -> return configuration error
+ *
+ * 2. A refresh token already exists
+ *       -> verify Drive automatically
+ *       -> NO Google authorization page
+ *
+ * 3. No refresh token exists
+ *       -> start Google OAuth setup
+ *
+ * Therefore, once the backend has been authorized,
+ * calling this endpoint will NOT show Google's permission
+ * screen again.
  */
 router.get(
   '/auth',
   asyncHandler(async (req, res) => {
+    /**
+     * Check OAuth configuration first.
+     */
     if (!isOAuthConfigured()) {
       return res.status(500).json({
         success: false,
@@ -124,6 +176,63 @@ router.get(
       });
     }
 
+    /**
+     * -----------------------------------------------------
+     * AUTOMATIC CONNECTION
+     * -----------------------------------------------------
+     *
+     * If a refresh token already exists, try to use it.
+     *
+     * This is the important part that prevents the normal
+     * application flow from opening Google's authorization
+     * screen.
+     */
+    if (isDriveAuthorized()) {
+      try {
+        await getDriveUserInfo();
+        await ensureDriveAccess();
+
+        /**
+         * Already connected.
+         *
+         * Do NOT redirect to Google.
+         */
+        return res.redirect(302, getFrontendUrl());
+      } catch (error) {
+        console.error(
+          '[Google Drive auth] Existing authorization could not be used:',
+          {
+            message: error.message,
+            code: error.code,
+            status:
+              error.originalError?.status ||
+              error.response?.status ||
+              null,
+          }
+        );
+
+        /**
+         * IMPORTANT:
+         *
+         * We only continue to OAuth when the stored token
+         * cannot actually authenticate.
+         *
+         * This means normal requests will never unnecessarily
+         * ask for Google permission.
+         */
+      }
+    }
+
+    /**
+     * -----------------------------------------------------
+     * INITIAL SETUP / RECONNECT ONLY
+     * -----------------------------------------------------
+     *
+     * If there is no usable refresh token, start OAuth.
+     *
+     * This route should be used manually by the administrator
+     * for first-time setup or genuine token recovery.
+     */
     try {
       const { authUrl } = getAuthUrl();
 
@@ -149,7 +258,10 @@ router.get(
  *
  * GET /api/google-drive/callback
  *
- * Google redirects here after authorization.
+ * This endpoint is ONLY used by Google after the initial
+ * backend authorization/reconnect process.
+ *
+ * Normal frontend/admin usage never needs this route.
  */
 router.get(
   '/callback',
@@ -167,10 +279,13 @@ router.get(
      * -----------------------------------------------------
      */
     if (error) {
-      console.error('[Google Drive OAuth] Google returned error:', {
-        error,
-        error_description,
-      });
+      console.error(
+        '[Google Drive OAuth] Google returned error:',
+        {
+          error,
+          error_description,
+        }
+      );
 
       return res.status(400).send(`
         <!DOCTYPE html>
@@ -198,9 +313,8 @@ router.get(
             </p>
 
             <p>
-              <a href="/api/google-drive/auth">
-                Try Google Drive authorization again
-              </a>
+              Please contact the system administrator if
+              Google Drive needs to be connected again.
             </p>
           </body>
         </html>
@@ -231,13 +345,8 @@ router.get(
             <h1>Invalid Authorization Response</h1>
 
             <p>
-              Google did not return the required authorization information.
-            </p>
-
-            <p>
-              <a href="/api/google-drive/auth">
-                Try again
-              </a>
+              Google did not return the required authorization
+              information.
             </p>
           </body>
         </html>
@@ -272,13 +381,8 @@ router.get(
             </p>
 
             <p>
-              Please start the Google Drive authorization process again.
-            </p>
-
-            <p>
-              <a href="/api/google-drive/auth">
-                Try again
-              </a>
+              Please contact the system administrator if
+              Google Drive needs to be connected again.
             </p>
           </body>
         </html>
@@ -295,14 +399,12 @@ router.get(
 
       /**
        * Google may not return a refresh_token when the
-       * application was already authorized previously.
+       * application has already been authorized previously.
        *
        * Therefore:
        *
        * 1. Use the new refresh token if Google returned one.
-       * 2. Otherwise use an already stored refresh token.
-       * 3. If neither exists, ask the user to revoke access
-       *    and authorize again.
+       * 2. Otherwise reuse the existing stored refresh token.
        */
       let refreshToken = tokens.refresh_token;
 
@@ -321,7 +423,7 @@ router.get(
       }
 
       /**
-       * No refresh token available at all.
+       * No refresh token available.
        */
       if (!refreshToken) {
         console.error(
@@ -350,13 +452,8 @@ router.get(
               </p>
 
               <p>
-                This usually happens because this Google account has
-                already authorized the application.
-              </p>
-
-              <p>
-                Please revoke this application's Google Drive access
-                and then authorize it again.
+                The administrator may need to revoke this application's
+                Google access and authorize it again.
               </p>
 
               <p>
@@ -366,16 +463,6 @@ router.get(
                   rel="noopener noreferrer"
                 >
                   Open Google Account Permissions
-                </a>
-              </p>
-
-              <p>
-                After revoking the application, click below:
-              </p>
-
-              <p>
-                <a href="/api/google-drive/auth">
-                  Authorize Google Drive Again
                 </a>
               </p>
             </body>
@@ -388,16 +475,18 @@ router.get(
        * Save refresh token
        * -----------------------------------------------------
        *
-       * IMPORTANT:
-       * On Render, the recommended permanent location is
-       * GOOGLE_DRIVE_REFRESH_TOKEN environment variable.
+       * Locally this is stored in:
        *
-       * The helper function handles the storage logic.
+       * .gdrive_refresh_token
+       *
+       * Production persistence will be handled separately
+       * so Render restarts do not lose the token.
        */
       await saveRefreshToken(refreshToken);
 
       /**
-       * Clear cached Drive authorization.
+       * Clear cached OAuth/Drive clients so the new token
+       * is immediately used.
        */
       resetOAuthCache();
 
@@ -424,26 +513,7 @@ router.get(
         );
       }
 
-      /**
-       * -----------------------------------------------------
-       * Frontend redirect URL
-       * -----------------------------------------------------
-       *
-       * We intentionally use FRONTEND_URL.
-       *
-       * Render environment:
-       *
-       * FRONTEND_URL=https://technovahub.in/test_boutique
-       *
-       * We do NOT use FRONTEND_ADMIN_URL.
-       *
-       * We also do NOT hardcode:
-       *
-       * /test_boutique/admin
-       */
-      const frontendUrl =
-        process.env.FRONTEND_URL ||
-        'https://technovahub.in/test_boutique';
+      const frontendUrl = getFrontendUrl();
 
       /**
        * -----------------------------------------------------
@@ -481,8 +551,8 @@ router.get(
             </p>
 
             <p>
-              However, the configured Google Drive folder could not
-              be accessed.
+              However, the configured Google Drive folder
+              could not be accessed.
             </p>
 
             ${
@@ -542,13 +612,7 @@ router.get(
             </p>
 
             <p>
-              Please check the Render logs for more information.
-            </p>
-
-            <p>
-              <a href="/api/google-drive/auth">
-                Try again
-              </a>
+              Please check the backend logs for more information.
             </p>
           </body>
         </html>
@@ -567,11 +631,15 @@ router.get(
  * Admin only.
  *
  * This endpoint verifies:
+ *
  * - OAuth configuration
  * - Refresh token
+ * - Drive client
+ * - Access token
  * - Drive API
  * - Folder ID
- * - Folder access
+ * - Folder existence
+ * - Folder accessibility
  */
 router.get(
   '/test',
@@ -589,7 +657,9 @@ router.get(
     };
 
     /**
+     * -----------------------------------------------------
      * OAuth configuration check
+     * -----------------------------------------------------
      */
     if (!results.oauthConfigured) {
       return res.status(200).json({
@@ -600,7 +670,9 @@ router.get(
     }
 
     /**
+     * -----------------------------------------------------
      * Refresh token check
+     * -----------------------------------------------------
      */
     if (!results.authorizationTokenAvailable) {
       return res.status(200).json({
@@ -614,20 +686,22 @@ router.get(
       /**
        * Create Drive client.
        *
-       * This will use the stored refresh token and obtain
-       * an access token when required.
+       * The OAuth client uses the stored refresh token.
        */
       const drive = getDriveClient();
 
       if (!drive) {
-        throw new Error('Google Drive client could not be created.');
+        throw new Error(
+          'Google Drive client could not be created.'
+        );
       }
 
-      results.accessTokenRefreshable = true;
       results.driveApiAccessible = true;
 
       /**
-       * Normalize configured folder ID.
+       * -----------------------------------------------------
+       * Check configured folder ID
+       * -----------------------------------------------------
        */
       const folderId = normalizeFolderId(
         process.env.GOOGLE_DRIVE_FOLDER_ID
@@ -639,19 +713,31 @@ router.get(
         );
       }
 
-      results.folderExists = true;
-
       /**
-       * Verify folder access.
+       * -----------------------------------------------------
+       * Actually verify the folder.
+       *
+       * ensureDriveAccess() performs:
+       *
+       * Google Drive API
+       *      ↓
+       * files.get(folderId)
+       *      ↓
+       * verify folder MIME type
+       *
+       * If this succeeds, the access token was usable.
        */
       const folderInfo = await ensureDriveAccess();
 
+      results.accessTokenRefreshable = true;
+      results.folderExists = true;
       results.folderAccessible = true;
       results.folderName = folderInfo?.name || null;
 
       return res.status(200).json({
         success: true,
-        message: 'Google Drive connection test successful.',
+        message:
+          'Google Drive connection test successful.',
         results,
       });
     } catch (err) {
@@ -660,15 +746,17 @@ router.get(
         {
           message: err.message,
           code: err.code,
-          status: err.originalError?.status || err.response?.status,
+          status:
+            err.originalError?.status ||
+            err.response?.status ||
+            null,
         }
       );
 
-      results.accessTokenRefreshable = false;
-
       return res.status(200).json({
         success: false,
-        message: 'Google Drive connection test failed.',
+        message:
+          'Google Drive connection test failed.',
         results,
         error: err.message,
         errorCode: err.code || null,

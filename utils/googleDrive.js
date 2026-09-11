@@ -172,7 +172,7 @@ function getAuthUrl() {
 
   const authUrl = client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account',
     scope: SCOPES,
     state: state,
     include_granted_scopes: true,
@@ -181,6 +181,7 @@ function getAuthUrl() {
 
   return { authUrl, state };
 }
+
 
 async function exchangeCodeForTokens(code) {
   const client = new google.auth.OAuth2(
