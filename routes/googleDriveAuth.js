@@ -398,36 +398,21 @@ router.get(
       const tokens = await exchangeCodeForTokens(code);
 
       /**
-       * Google may not return a refresh_token when the
-       * application has already been authorized previously.
+       * Google must return a new refresh token during
+       * manual authorization/reconnect.
        *
-       * Therefore:
+       * IMPORTANT:
        *
-       * 1. Use the new refresh token if Google returned one.
-       * 2. Otherwise reuse the existing stored refresh token.
+       * We do NOT reuse an old refresh token here.
+       *
+       * This prevents an invalid/expired old token from being
+       * silently saved and used again.
        */
-      let refreshToken = tokens.refresh_token;
+      const refreshToken = tokens.refresh_token;
 
-      if (!refreshToken) {
-        console.log(
-          '[Google Drive OAuth] Google did not return a new refresh token.'
-        );
-
-        refreshToken = getStoredRefreshToken();
-
-        if (refreshToken) {
-          console.log(
-            '[Google Drive OAuth] Existing refresh token found. Reusing it.'
-          );
-        }
-      }
-
-      /**
-       * No refresh token available.
-       */
       if (!refreshToken) {
         console.error(
-          '[Google Drive OAuth] No refresh token available.'
+          '[Google Drive OAuth] Google did not return a new refresh token.'
         );
 
         return res.status(400).send(`
@@ -448,12 +433,13 @@ router.get(
               <h1>Authorization Completed</h1>
 
               <p>
-                Google granted access, but no refresh token was returned.
+                Google authorization completed, but Google did not
+                return a new refresh token.
               </p>
 
               <p>
-                The administrator may need to revoke this application's
-                Google access and authorize it again.
+                Please revoke this application's access from your
+                Google Account and authorize it again.
               </p>
 
               <p>
@@ -726,6 +712,7 @@ router.get(
        * verify folder MIME type
        *
        * If this succeeds, the access token was usable.
+       * -----------------------------------------------------
        */
       const folderInfo = await ensureDriveAccess();
 

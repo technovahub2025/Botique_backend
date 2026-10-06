@@ -172,7 +172,7 @@ function getAuthUrl() {
 
   const authUrl = client.generateAuthUrl({
     access_type: 'offline',
-    prompt: 'select_account',
+    prompt: 'consent',
     scope: SCOPES,
     state: state,
     include_granted_scopes: true,
@@ -547,3 +547,4 @@ module.exports = {
   setFilePermissions,
   normalizeFolderId,
 };
+
